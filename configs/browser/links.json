@@ -1,0 +1,134 @@
+[
+  {
+    "group": "developer",
+    "links": [
+      {
+        "label": "github",
+        "url": "https://github.com/box1o?tab=repositories"
+      },
+      {
+        "label": "youtube",
+        "url": "https://www.youtube.com/"
+      },
+      {
+        "label": "chatgpt",
+        "url": "https://chatgpt.com/"
+      },
+      {
+        "label": "claude",
+        "url": "https://claude.ai/"
+      },
+      {
+        "label": "stackoverflow",
+        "url": "https://stackoverflow.com/"
+      },
+      {
+        "label": "mdn",
+        "url": "https://developer.mozilla.org/"
+      },
+      {
+        "label": "arch wiki",
+        "url": "https://wiki.archlinux.org/"
+      },
+      {
+        "label": "npm",
+        "url": "https://www.npmjs.com/"
+      },
+      {
+        "label": "crates",
+        "url": "https://crates.io/"
+      },
+      {
+        "label": "docker hub",
+        "url": "https://hub.docker.com/"
+      },
+      {
+        "label": "localhost studio",
+        "url": "http://localhost:8080/studio.html"
+      }
+    ]
+  },
+  {
+    "group": "fresenius",
+    "links": [
+      {
+        "label": "sharepoint",
+        "url": "https://fmcna.sharepoint.com/sites/icu2"
+      },
+      {
+        "label": "git",
+        "url": "https://dev.azure.com/GRD-EMEA/Reciprocity/_sprints/taskboard/Reciprocity%20MGW/Reciprocity/PI%2026.2/Iteration%2026.2.3"
+      },
+      {
+        "label": "wiki",
+        "url": "https://dev.azure.com/GRD-EMEA/Reciprocity/_wiki/wikis/Reciprocity/11461/Reciprocity"
+      },
+      {
+        "label": "unison q5",
+        "url": "https://unison-eus-q5.unison.fmcgds-np.com/adequacy-ui-solo/administration/patients"
+      },
+      {
+        "label": "thingworks cc0002",
+        "url": "https://rec-api.app.test.eu.fmc-ag.com/Thingworx/FormLogin/Everyone#master=MashupMasterPage&mashup=FMC-GW-SL600&__applyThemeName=ReciprocityTheme"
+      },
+      {
+        "label": "thingworks cc0001",
+        "url": "https://r20-api-int-01.fmcgds-np.com/Thingworx/FormLogin/FMCNA?loginErrorMessage=invalid-organization-credentials"
+      },
+      {
+        "label": "timesheet",
+        "url": "https://fmcemea-my.sharepoint.com/:x:/r/personal/gheorghi_stancov_freseniusmedicalcare_com/_layouts/15/Doc.aspx?sourcedoc=%7B35F764B8-9FF4-4D47-B2E8-E72F24B9FF39%7D&file=timesheets_alexei_rusu.xlsx&action=default&mobileredirect=true&DefaultItemOpen=1&web=1"
+      }
+    ]
+  },
+  {
+    "group": "ssd",
+    "links": [
+      {
+        "label": "core",
+        "url": "https://dev.azure.com/SSDgmbh/Core/_wiki/"
+      },
+      {
+        "label": "board",
+        "url": "https://dev.azure.com/SSDgmbh/Core/_sprints/taskboard/Prototyping%20Team/Core/Prototyping/"
+      },
+      {
+        "label": "team info",
+        "url": "https://dev.azure.com/SSDgmbh/Core/_wiki/wikis/Core.wiki/198/Team-Info"
+      },
+      {
+        "label": "gitcore",
+        "url": "https://dev.azure.com/SSDgmbh/_git/Core"
+      },
+      {
+        "label": "sharepoint",
+        "url": "https://smartsoftdevgmbh.sharepoint.com/:f:/s/allcompany/IgAl4ouQThclRYAWSQEKE9cMASwYrhy4G6_i5W1zNb5xJEA?e=NohLxK"
+      },
+      {
+        "label": "whiteboard",
+        "url": "https://whiteboard.cloud.microsoft/me/whiteboards/p/c3BvOmh0dHBzOi8vc21hcnRzb2Z0ZGV2Z21iaC5zaGFyZXBvaW50LmNvbS9zaXRlcy9hbGxjb21wYW55/b!_O8OVW1HIE-6jTeyNDA6JLd1R2LzidpFnxTFdFT8rlkFYPmWh9PIQa5Ku-Bt1nBF/01TRXKYTQWWTHZ7E343RF34GDD4UDCYGDF"
+      },
+      {
+        "label": "files",
+        "url": "http://files/"
+      }
+    ]
+  },
+  {
+    "group": "other",
+    "links": [
+      {
+        "label": "current sprint",
+        "url": "https://www.notion.so/Current-Sprint-1fc578b0950880088ea4cf9ee09c8da9"
+      },
+      {
+        "label": "mpass",
+        "url": "https://mpass.gov.md/moldsign/login?authenticationType=MoldSign"
+      },
+      {
+        "label": "neplace",
+        "url": "https://neplaceshop.md/cart"
+      }
+    ]
+  }
+]

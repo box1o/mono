@@ -1,0 +1,22 @@
+[
+  {
+    "key": "ctrl+q",
+    "command": "workbench.action.closeWindow"
+  },
+  {
+    "key": "alt+h",
+    "command": "workbench.action.focusLeftGroup"
+  },
+  {
+    "key": "alt+l",
+    "command": "workbench.action.focusRightGroup"
+  },
+  {
+    "key": "alt+j",
+    "command": "workbench.action.focusBelowGroup"
+  },
+  {
+    "key": "alt+k",
+    "command": "workbench.action.focusAboveGroup"
+  }
+]

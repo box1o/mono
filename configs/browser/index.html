@@ -1,0 +1,961 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Home</title>
+  <style>
+    :root {
+      --bg: #181616;
+      --fg: #c5c9c5;
+      --muted: #727169;
+      --line: #393836;
+      --accent: #8ba4b0;
+      --panel: rgba(24, 22, 22, 0.74);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      min-height: 100%;
+      margin: 0;
+    }
+
+    body {
+      min-height: 100vh;
+      font-family: "JetBrains Mono", monospace;
+      color: var(--fg);
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 28px;
+      overflow: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background:
+        linear-gradient(rgba(24, 22, 22, 0.58), rgba(24, 22, 22, 0.76)),
+        url("../hypr/img/life.jpg") center / cover no-repeat;
+      filter: blur(14px) saturate(0.55);
+      transform: scale(1.06);
+      z-index: -2;
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle at center, rgba(197, 201, 197, 0.08), rgba(24, 22, 22, 0.68) 48%, rgba(24, 22, 22, 0.90));
+      z-index: -1;
+    }
+
+    main {
+      width: min(920px, calc(100vw - 56px), calc((100vh - 56px) * 16 / 9));
+      aspect-ratio: 16 / 9;
+      overflow: auto;
+      padding: 34px 32px 30px;
+      background: var(--panel);
+      border: 1px solid rgba(98, 94, 90, 0.40);
+      backdrop-filter: blur(18px);
+      scrollbar-width: thin;
+      scrollbar-color: var(--line) transparent;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 18px;
+    }
+
+    .time {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    button {
+      border: 0;
+      padding: 0;
+      color: var(--muted);
+      background: transparent;
+      font: inherit;
+      font-size: 12px;
+      text-decoration: underline;
+      text-underline-offset: 4px;
+      cursor: pointer;
+    }
+
+    button:hover,
+    button:focus {
+      color: var(--accent);
+      outline: none;
+    }
+
+    form.search {
+      margin: 0 0 16px;
+    }
+
+    input {
+      width: 100%;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      outline: 0;
+      color: var(--fg);
+      background: transparent;
+      font: inherit;
+    }
+
+    input {
+      height: 48px;
+      padding: 0 4px;
+      font-size: 18px;
+    }
+
+    input:focus {
+      border-bottom-color: rgba(139, 164, 176, 0.7);
+    }
+
+    input::placeholder {
+      color: var(--muted);
+    }
+
+    section {
+      display: grid;
+      gap: 22px;
+    }
+
+    .search-results {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 18px;
+      min-height: 28px;
+      margin: 0 0 26px;
+      color: var(--muted);
+      font-size: 12px;
+      visibility: hidden;
+    }
+
+    .search-results.active {
+      visibility: visible;
+    }
+
+    .search-results a:first-child {
+      color: var(--accent);
+      text-decoration-color: var(--accent);
+    }
+
+    .group {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 14px;
+      align-items: start;
+    }
+
+    h2 {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 500;
+      text-transform: lowercase;
+    }
+
+    .links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 18px;
+    }
+
+    a {
+      color: var(--fg);
+      text-decoration: underline;
+      text-decoration-color: rgba(197, 201, 197, 0.35);
+      text-underline-offset: 4px;
+      font-size: 13px;
+    }
+
+    a:hover,
+    a:focus {
+      color: var(--accent);
+      text-decoration-color: var(--accent);
+      outline: none;
+    }
+
+    .editor {
+      display: none;
+      margin-top: 28px;
+      padding-top: 22px;
+      border-top: 1px solid var(--line);
+    }
+
+    .editing .editor {
+      display: block;
+    }
+
+    .editor-groups {
+      display: grid;
+      gap: 18px;
+    }
+
+    .edit-group {
+      padding-bottom: 14px;
+      border-bottom: 1px solid rgba(57, 56, 54, 0.65);
+    }
+
+    .edit-group.dragging,
+    .edit-link.dragging {
+      opacity: 0.45;
+    }
+
+    .edit-group-head {
+      display: grid;
+      grid-template-columns: 24px minmax(140px, 1fr) auto auto auto auto;
+      gap: 12px;
+      align-items: end;
+      margin-bottom: 12px;
+    }
+
+    .edit-links {
+      display: grid;
+      gap: 10px;
+    }
+
+    .edit-link {
+      display: grid;
+      grid-template-columns: 24px minmax(110px, 0.32fr) minmax(180px, 1fr) minmax(110px, 0.24fr) auto;
+      gap: 12px;
+      align-items: end;
+    }
+
+    .drag-handle {
+      color: var(--muted);
+      cursor: grab;
+      user-select: none;
+      line-height: 32px;
+      text-align: center;
+    }
+
+    .drag-handle:active {
+      cursor: grabbing;
+    }
+
+    .edit-group.drop-target,
+    .edit-link.drop-target {
+      outline: 1px solid rgba(139, 164, 176, 0.55);
+      outline-offset: 4px;
+    }
+
+    .editor input,
+    .editor select {
+      height: 32px;
+      font-size: 12px;
+    }
+
+    select {
+      width: 100%;
+      height: 32px;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      outline: 0;
+      color: var(--fg);
+      background: var(--bg);
+      font: inherit;
+      font-size: 12px;
+    }
+
+    select:focus {
+      border-bottom-color: rgba(139, 164, 176, 0.7);
+    }
+
+    .editor button {
+      line-height: 32px;
+    }
+
+    .editor-actions {
+      display: flex;
+      gap: 18px;
+      margin-top: 14px;
+    }
+
+    .note {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.6;
+    }
+
+    .editor-status {
+      min-height: 18px;
+      margin-top: 10px;
+      color: var(--accent);
+      font-size: 11px;
+    }
+
+    @media (max-width: 620px) {
+      body {
+        align-items: flex-start;
+        padding-top: 64px;
+      }
+
+      main {
+        padding: 28px 22px;
+      }
+
+      .group {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+
+      .edit-group-head,
+      .edit-link {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+
+      .drag-handle {
+        display: none;
+      }
+
+      main {
+        width: min(100%, calc(100vw - 28px));
+        min-height: calc(100vh - 96px);
+        aspect-ratio: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main id="app">
+    <header>
+      <div class="time" id="time">home</div>
+      <button type="button" id="editToggle">edit</button>
+    </header>
+
+    <form class="search" id="searchForm" action="https://duckduckgo.com/" method="get">
+      <input id="searchInput" name="q" type="search" autofocus autocomplete="off" placeholder="Search bookmarks or web">
+    </form>
+
+    <div class="search-results" id="searchResults"></div>
+
+    <section id="links"></section>
+
+    <div class="editor">
+      <div class="editor-groups" id="editorGroups"></div>
+      <div class="editor-actions">
+        <button type="button" id="addGroup">add group</button>
+        <button type="button" id="save">save</button>
+        <button type="button" id="reset">reset</button>
+        <button type="button" id="close">close</button>
+      </div>
+      <div class="editor-status" id="editorStatus"></div>
+      <div class="note">
+        Save stores edits in this browser. Drag groups or links to reorder them,
+        or use the group selector on each link to move it.
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const storageKey = "mono-home-links";
+    const fallbackLinks = [
+          {
+                "group": "developer",
+                "links": [
+                      {
+                            "label": "github",
+                            "url": "https://github.com/box1o?tab=repositories"
+                      },
+                      {
+                            "label": "youtube",
+                            "url": "https://www.youtube.com/"
+                      },
+                      {
+                            "label": "chatgpt",
+                            "url": "https://chatgpt.com/"
+                      },
+                      {
+                            "label": "claude",
+                            "url": "https://claude.ai/"
+                      },
+                      {
+                            "label": "stackoverflow",
+                            "url": "https://stackoverflow.com/"
+                      },
+                      {
+                            "label": "mdn",
+                            "url": "https://developer.mozilla.org/"
+                      },
+                      {
+                            "label": "arch wiki",
+                            "url": "https://wiki.archlinux.org/"
+                      },
+                      {
+                            "label": "npm",
+                            "url": "https://www.npmjs.com/"
+                      },
+                      {
+                            "label": "crates",
+                            "url": "https://crates.io/"
+                      },
+                      {
+                            "label": "docker hub",
+                            "url": "https://hub.docker.com/"
+                      },
+                      {
+                            "label": "localhost studio",
+                            "url": "http://localhost:8080/studio.html"
+                      }
+                ]
+          },
+          {
+                "group": "fresenius",
+                "links": [
+                      {
+                            "label": "sharepoint",
+                            "url": "https://fmcna.sharepoint.com/sites/icu2"
+                      },
+                      {
+                            "label": "git",
+                            "url": "https://dev.azure.com/GRD-EMEA/Reciprocity/_sprints/taskboard/Reciprocity%20MGW/Reciprocity/PI%2026.2/Iteration%2026.2.3"
+                      },
+                      {
+                            "label": "wiki",
+                            "url": "https://dev.azure.com/GRD-EMEA/Reciprocity/_wiki/wikis/Reciprocity/11461/Reciprocity"
+                      },
+                      {
+                            "label": "unison q5",
+                            "url": "https://unison-eus-q5.unison.fmcgds-np.com/adequacy-ui-solo/administration/patients"
+                      },
+                      {
+                            "label": "thingworks cc0002",
+                            "url": "https://rec-api.app.test.eu.fmc-ag.com/Thingworx/FormLogin/Everyone#master=MashupMasterPage&mashup=FMC-GW-SL600&__applyThemeName=ReciprocityTheme"
+                      },
+                      {
+                            "label": "thingworks cc0001",
+                            "url": "https://r20-api-int-01.fmcgds-np.com/Thingworx/FormLogin/FMCNA?loginErrorMessage=invalid-organization-credentials"
+                      },
+                      {
+                            "label": "timesheet",
+                            "url": "https://fmcemea-my.sharepoint.com/:x:/r/personal/gheorghi_stancov_freseniusmedicalcare_com/_layouts/15/Doc.aspx?sourcedoc=%7B35F764B8-9FF4-4D47-B2E8-E72F24B9FF39%7D&file=timesheets_alexei_rusu.xlsx&action=default&mobileredirect=true&DefaultItemOpen=1&web=1"
+                      }
+                ]
+          },
+          {
+                "group": "ssd",
+                "links": [
+                      {
+                            "label": "core",
+                            "url": "https://dev.azure.com/SSDgmbh/Core/_wiki/"
+                      },
+                      {
+                            "label": "board",
+                            "url": "https://dev.azure.com/SSDgmbh/Core/_sprints/taskboard/Prototyping%20Team/Core/Prototyping/"
+                      },
+                      {
+                            "label": "team info",
+                            "url": "https://dev.azure.com/SSDgmbh/Core/_wiki/wikis/Core.wiki/198/Team-Info"
+                      },
+                      {
+                            "label": "gitcore",
+                            "url": "https://dev.azure.com/SSDgmbh/_git/Core"
+                      },
+                      {
+                            "label": "sharepoint",
+                            "url": "https://smartsoftdevgmbh.sharepoint.com/:f:/s/allcompany/IgAl4ouQThclRYAWSQEKE9cMASwYrhy4G6_i5W1zNb5xJEA?e=NohLxK"
+                      },
+                      {
+                            "label": "whiteboard",
+                            "url": "https://whiteboard.cloud.microsoft/me/whiteboards/p/c3BvOmh0dHBzOi8vc21hcnRzb2Z0ZGV2Z21iaC5zaGFyZXBvaW50LmNvbS9zaXRlcy9hbGxjb21wYW55/b!_O8OVW1HIE-6jTeyNDA6JLd1R2LzidpFnxTFdFT8rlkFYPmWh9PIQa5Ku-Bt1nBF/01TRXKYTQWWTHZ7E343RF34GDD4UDCYGDF"
+                      },
+                      {
+                            "label": "files",
+                            "url": "http://files/"
+                      }
+                ]
+          },
+          {
+                "group": "other",
+                "links": [
+                      {
+                            "label": "current sprint",
+                            "url": "https://www.notion.so/Current-Sprint-1fc578b0950880088ea4cf9ee09c8da9"
+                      },
+                      {
+                            "label": "mpass",
+                            "url": "https://mpass.gov.md/moldsign/login?authenticationType=MoldSign"
+                      },
+                      {
+                            "label": "neplace",
+                            "url": "https://neplaceshop.md/cart"
+                      }
+                ]
+          }
+    ];
+
+    let linksData = fallbackLinks;
+    let editData = fallbackLinks;
+    let draggedGroupIndex = null;
+    let draggedLink = null;
+
+    const app = document.getElementById("app");
+    const links = document.getElementById("links");
+    const searchForm = document.getElementById("searchForm");
+    const searchInput = document.getElementById("searchInput");
+    const searchResults = document.getElementById("searchResults");
+    const editorGroups = document.getElementById("editorGroups");
+    const editToggle = document.getElementById("editToggle");
+    const addGroup = document.getElementById("addGroup");
+    const save = document.getElementById("save");
+    const reset = document.getElementById("reset");
+    const close = document.getElementById("close");
+    const editorStatus = document.getElementById("editorStatus");
+    const time = document.getElementById("time");
+
+    function renderTime() {
+      time.textContent = new Intl.DateTimeFormat([], {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date());
+    }
+
+    function clone(data) {
+      return JSON.parse(JSON.stringify(data));
+    }
+
+    function normalizeData(data) {
+      return (Array.isArray(data) ? data : []).map((group) => ({
+        group: String(group.group || "section").trim() || "section",
+        links: (Array.isArray(group.links) ? group.links : []).map((item) => ({
+          label: String(item.label || "link").trim() || "link",
+          url: String(item.url || "#").trim() || "#",
+        })),
+      }));
+    }
+
+    function renderLinks(data) {
+      links.innerHTML = "";
+
+      for (const group of data) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "group";
+
+        const title = document.createElement("h2");
+        title.textContent = group.group;
+
+        const list = document.createElement("div");
+        list.className = "links";
+
+        for (const item of group.links || []) {
+          const anchor = document.createElement("a");
+          anchor.href = item.url;
+          anchor.textContent = item.label;
+          list.append(anchor);
+        }
+
+        wrapper.append(title, list);
+        links.append(wrapper);
+      }
+    }
+
+    function flattenLinks() {
+      return linksData.flatMap((group) =>
+        (group.links || []).map((item) => ({
+          group: group.group,
+          label: item.label,
+          url: item.url,
+          haystack: `${group.group} ${item.label} ${item.url}`.toLowerCase(),
+        }))
+      );
+    }
+
+    function fuzzyScore(query, text) {
+      query = query.trim().toLowerCase();
+      text = text.toLowerCase();
+      if (!query) return 0;
+      if (text.includes(query)) return 1000 - text.indexOf(query);
+
+      let score = 0;
+      let cursor = 0;
+      let streak = 0;
+
+      for (const char of query) {
+        const found = text.indexOf(char, cursor);
+        if (found === -1) return 0;
+        streak = found === cursor ? streak + 1 : 1;
+        score += 10 + streak * 4 - Math.min(found - cursor, 8);
+        cursor = found + 1;
+      }
+
+      return score;
+    }
+
+    function bookmarkMatches(query) {
+      return flattenLinks()
+        .map((item) => ({ ...item, score: fuzzyScore(query, item.haystack) }))
+        .filter((item) => item.score > 0)
+        .sort((a, b) => b.score - a.score || a.label.localeCompare(b.label))
+        .slice(0, 8);
+    }
+
+    function renderSearchResults() {
+      const query = searchInput.value;
+      const matches = bookmarkMatches(query);
+      searchResults.innerHTML = "";
+
+      if (!query.trim() || matches.length === 0) {
+        searchResults.classList.remove("active");
+        return matches;
+      }
+
+      for (const match of matches) {
+        const anchor = document.createElement("a");
+        anchor.href = match.url;
+        anchor.textContent = `${match.label}`;
+        anchor.title = `${match.group} | ${match.url}`;
+        searchResults.append(anchor);
+      }
+
+      searchResults.classList.add("active");
+      return matches;
+    }
+
+    function updateEditorStatus(message = "unsaved changes") {
+      editorStatus.textContent = message;
+    }
+
+    function updatePreview() {
+      editData = normalizeData(editData);
+      renderLinks(editData);
+      renderSearchResults();
+    }
+
+    function commitEditData() {
+      editData = normalizeData(editData);
+      linksData = clone(editData);
+      localStorage.setItem(storageKey, JSON.stringify(linksData));
+      renderLinks(linksData);
+      renderSearchResults();
+      updateEditorStatus("saved");
+    }
+
+    function moveGroup(fromIndex, toIndex) {
+      if (toIndex < 0 || toIndex >= editData.length || fromIndex === toIndex) return;
+      const [moved] = editData.splice(fromIndex, 1);
+      editData.splice(toIndex, 0, moved);
+      updatePreview();
+      renderEditor();
+    }
+
+    function moveLink(fromGroup, fromLink, toGroup, toLink = null) {
+      if (!editData[fromGroup] || !editData[fromGroup].links[fromLink] || !editData[toGroup]) return;
+
+      const [moved] = editData[fromGroup].links.splice(fromLink, 1);
+      const targetLinks = editData[toGroup].links;
+      let targetIndex = toLink === null ? targetLinks.length : Math.max(0, Math.min(toLink, targetLinks.length));
+
+      if (fromGroup === toGroup && toLink !== null && fromLink < toLink) {
+        targetIndex -= 1;
+      }
+
+      targetLinks.splice(targetIndex, 0, moved);
+      updatePreview();
+      renderEditor();
+    }
+
+    function renderEditor() {
+      editorGroups.innerHTML = "";
+
+      editData.forEach((group, groupIndex) => {
+        const groupEl = document.createElement("div");
+        groupEl.className = "edit-group";
+        groupEl.draggable = false;
+
+        groupEl.addEventListener("dragstart", (event) => {
+          if (event.target.closest(".edit-link")) return;
+          if (!event.target.closest(".drag-handle")) return;
+          draggedGroupIndex = groupIndex;
+          groupEl.classList.add("dragging");
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", `group:${groupIndex}`);
+        });
+
+        groupEl.addEventListener("dragend", () => {
+          draggedGroupIndex = null;
+          groupEl.classList.remove("dragging");
+        });
+
+        groupEl.addEventListener("dragover", (event) => {
+          if (draggedGroupIndex === null && !draggedLink) return;
+          event.preventDefault();
+          groupEl.classList.add("drop-target");
+          event.dataTransfer.dropEffect = "move";
+        });
+
+        groupEl.addEventListener("dragleave", (event) => {
+          if (!groupEl.contains(event.relatedTarget)) {
+            groupEl.classList.remove("drop-target");
+          }
+        });
+
+        groupEl.addEventListener("drop", (event) => {
+          event.preventDefault();
+          groupEl.classList.remove("drop-target");
+
+          if (draggedGroupIndex !== null && draggedGroupIndex !== groupIndex) {
+            moveGroup(draggedGroupIndex, groupIndex);
+            return;
+          }
+
+          if (draggedLink && draggedLink.groupIndex !== groupIndex) {
+            moveLink(draggedLink.groupIndex, draggedLink.linkIndex, groupIndex);
+          }
+        });
+
+        const head = document.createElement("div");
+        head.className = "edit-group-head";
+
+        const handle = document.createElement("div");
+        handle.className = "drag-handle";
+        handle.textContent = "::";
+        handle.draggable = true;
+
+        const name = document.createElement("input");
+        name.value = group.group;
+        name.placeholder = "section";
+        name.addEventListener("input", () => {
+          editData[groupIndex].group = name.value;
+          updatePreview();
+          updateEditorStatus();
+        });
+
+        const groupUp = document.createElement("button");
+        groupUp.type = "button";
+        groupUp.textContent = "up";
+        groupUp.disabled = groupIndex === 0;
+        groupUp.addEventListener("click", () => moveGroup(groupIndex, groupIndex - 1));
+
+        const groupDown = document.createElement("button");
+        groupDown.type = "button";
+        groupDown.textContent = "down";
+        groupDown.disabled = groupIndex === editData.length - 1;
+        groupDown.addEventListener("click", () => moveGroup(groupIndex, groupIndex + 1));
+
+        const addLink = document.createElement("button");
+        addLink.type = "button";
+        addLink.textContent = "add link";
+        addLink.addEventListener("click", () => {
+          editData[groupIndex].links.push({ label: "new link", url: "https://" });
+          updatePreview();
+          renderEditor();
+          updateEditorStatus();
+        });
+
+        const removeGroup = document.createElement("button");
+        removeGroup.type = "button";
+        removeGroup.textContent = "remove";
+        removeGroup.addEventListener("click", () => {
+          editData.splice(groupIndex, 1);
+          updatePreview();
+          renderEditor();
+          updateEditorStatus();
+        });
+
+        head.append(handle, name, groupUp, groupDown, addLink, removeGroup);
+
+        const linkList = document.createElement("div");
+        linkList.className = "edit-links";
+
+        group.links.forEach((item, linkIndex) => {
+          const linkEl = document.createElement("div");
+          linkEl.className = "edit-link";
+          linkEl.draggable = false;
+
+          linkEl.addEventListener("dragstart", (event) => {
+            if (!event.target.closest(".drag-handle")) return;
+            draggedLink = { groupIndex, linkIndex };
+            linkEl.classList.add("dragging");
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/plain", `link:${groupIndex}:${linkIndex}`);
+            event.stopPropagation();
+          });
+
+          linkEl.addEventListener("dragend", () => {
+            draggedLink = null;
+            linkEl.classList.remove("dragging");
+          });
+
+          linkEl.addEventListener("dragover", (event) => {
+            if (!draggedLink) return;
+            event.preventDefault();
+            linkEl.classList.add("drop-target");
+            event.dataTransfer.dropEffect = "move";
+          });
+
+          linkEl.addEventListener("dragleave", (event) => {
+            if (!linkEl.contains(event.relatedTarget)) {
+              linkEl.classList.remove("drop-target");
+            }
+          });
+
+          linkEl.addEventListener("drop", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            linkEl.classList.remove("drop-target");
+
+            if (!draggedLink) return;
+
+            moveLink(draggedLink.groupIndex, draggedLink.linkIndex, groupIndex, linkIndex);
+          });
+
+          const linkHandle = document.createElement("div");
+          linkHandle.className = "drag-handle";
+          linkHandle.textContent = "::";
+          linkHandle.draggable = true;
+
+          const label = document.createElement("input");
+          label.value = item.label;
+          label.placeholder = "label";
+          label.addEventListener("input", () => {
+            editData[groupIndex].links[linkIndex].label = label.value;
+            updatePreview();
+            updateEditorStatus();
+          });
+
+          const url = document.createElement("input");
+          url.value = item.url;
+          url.placeholder = "url";
+          url.addEventListener("input", () => {
+            editData[groupIndex].links[linkIndex].url = url.value;
+            updatePreview();
+            updateEditorStatus();
+          });
+
+          const targetGroup = document.createElement("select");
+          targetGroup.title = "move to group";
+          editData.forEach((target, targetIndex) => {
+            const option = document.createElement("option");
+            option.value = String(targetIndex);
+            option.textContent = target.group || "section";
+            option.selected = targetIndex === groupIndex;
+            targetGroup.append(option);
+          });
+          targetGroup.addEventListener("change", () => {
+            moveLink(groupIndex, linkIndex, Number(targetGroup.value));
+            updateEditorStatus();
+          });
+
+          const removeLink = document.createElement("button");
+          removeLink.type = "button";
+          removeLink.textContent = "remove";
+          removeLink.addEventListener("click", () => {
+            editData[groupIndex].links.splice(linkIndex, 1);
+            updatePreview();
+            renderEditor();
+            updateEditorStatus();
+          });
+
+          linkEl.append(linkHandle, label, url, targetGroup, removeLink);
+          linkList.append(linkEl);
+        });
+
+        groupEl.append(head, linkList);
+        editorGroups.append(groupEl);
+      });
+    }
+
+    async function loadLinks() {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        linksData = normalizeData(JSON.parse(saved));
+        renderLinks(linksData);
+        return;
+      }
+
+      try {
+        const response = await fetch("links.json", { cache: "no-store" });
+        if (!response.ok) throw new Error("links.json not found");
+        linksData = normalizeData(await response.json());
+      } catch {
+        linksData = fallbackLinks;
+      }
+
+      renderLinks(linksData);
+      renderSearchResults();
+    }
+
+    function openEditor() {
+      editData = clone(linksData);
+      renderEditor();
+      updateEditorStatus("");
+      app.classList.add("editing");
+      editToggle.textContent = "editing";
+    }
+
+    function closeEditor() {
+      editData = clone(linksData);
+      renderLinks(linksData);
+      renderSearchResults();
+      updateEditorStatus("");
+      app.classList.remove("editing");
+      editToggle.textContent = "edit";
+    }
+
+    editToggle.addEventListener("click", () => {
+      if (app.classList.contains("editing")) closeEditor();
+      else openEditor();
+    });
+
+    close.addEventListener("click", closeEditor);
+
+    addGroup.addEventListener("click", () => {
+      editData.push({ group: "new group", links: [] });
+      updatePreview();
+      renderEditor();
+      updateEditorStatus();
+    });
+
+    save.addEventListener("click", () => {
+      commitEditData();
+      closeEditor();
+    });
+
+    reset.addEventListener("click", async () => {
+      localStorage.removeItem(storageKey);
+      editData = [];
+      closeEditor();
+      await loadLinks();
+    });
+
+    searchInput.addEventListener("input", renderSearchResults);
+
+    searchForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+
+      const query = searchInput.value.trim();
+      if (!query) return;
+
+      const [best] = bookmarkMatches(query);
+      if (best) {
+        window.location.href = best.url;
+        return;
+      }
+
+      window.location.href = `https://duckduckgo.com/?q=${encodeURIComponent(query)}`;
+    });
+
+    renderTime();
+    setInterval(renderTime, 30_000);
+    loadLinks();
+  </script>
+</body>
+</html>

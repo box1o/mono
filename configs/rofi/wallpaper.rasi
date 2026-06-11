@@ -1,0 +1,125 @@
+* {
+    bg:       #181616f2;
+    bg-soft:  #1f1d1df2;
+    bg-hover: #2a2826f2;
+    fg:       #dcd7ba;
+    muted:    #8a867f;
+    line:     #393836;
+    accent:   #8ba4b0;
+    selected: #dcd7ba;
+
+    font: "JetBrains Mono Nerd Font 10";
+    background-color: transparent;
+    text-color: @fg;
+}
+
+window {
+    location: center;
+    anchor: center;
+    width: 74%;
+    height: 29em;
+    padding: 0;
+    border: 1px;
+    border-radius: 10px;
+    border-color: @line;
+    background-color: @bg;
+}
+
+mainbox {
+    orientation: vertical;
+    children: [ "listview" ];
+    spacing: 0;
+    padding: 0;
+    background-color: transparent;
+}
+
+inputbar {
+    enabled: false;
+    children: [ "prompt", "entry" ];
+    spacing: 0.8em;
+    padding: 1em 1.2em;
+    border: 0 0 1px 0;
+    border-color: @line;
+    background-color: @bg-soft;
+}
+
+prompt {
+    enabled: false;
+    padding: 0.25em 0;
+    text-color: @accent;
+}
+
+entry {
+    enabled: false;
+    placeholder: "search";
+    placeholder-color: @muted;
+    cursor-color: @accent;
+    text-color: @fg;
+    background-color: transparent;
+}
+
+listview {
+    columns: 2;
+    lines: 1;
+    spacing: 0.8em;
+    padding: 0.8em;
+    cycle: true;
+    dynamic: true;
+    fixed-height: true;
+    fixed-columns: true;
+    scrollbar: false;
+    background-color: transparent;
+}
+
+element {
+    orientation: vertical;
+    children: [ "element-icon" ];
+    spacing: 0;
+    padding: 0.35em;
+    border: 1px;
+    border-radius: 8px;
+    border-color: transparent;
+    background-color: transparent;
+    text-color: @fg;
+}
+
+element normal active,
+element alternate active {
+    background-color: transparent;
+    text-color: @fg;
+}
+
+element selected {
+    border-color: @accent;
+    background-color: @bg-hover;
+    text-color: @selected;
+}
+
+element-icon {
+    size: 26.5em;
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+    border-radius: 6px;
+    background-color: @bg-soft;
+}
+
+element-text {
+    enabled: false;
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+    font: "JetBrains Mono Nerd Font 9";
+    text-color: inherit;
+    background-color: transparent;
+}
+
+message {
+    padding: 1em;
+    border: 1px 0 0 0;
+    border-color: @line;
+    background-color: @bg-soft;
+}
+
+textbox {
+    text-color: @fg;
+    background-color: transparent;
+}

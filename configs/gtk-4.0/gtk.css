@@ -1,0 +1,32 @@
+/* Overrides deployed to ~/.config/gtk-4.0/gtk.css
+   Remove rounded translucent frames, shadows and focus outlines for file choosers/portal dialogs */
+
+file-chooser,
+.file-chooser,
+file-chooser-dialog,
+.file-chooser-dialog,
+dialog,
+.backdrop,
+.portal-dialog,
+.gtk-portal-overlay,
+.xdg-portal-overlay,
+.portal-overlay {
+	background-color: transparent !important;
+	box-shadow: none !important;
+	border: none !important;
+	border-radius: 0 !important;
+	outline: none !important;
+}
+
+/* Remove focus shadows that produce framed edges */
+*:focus {
+	box-shadow: none !important;
+	outline: none !important;
+}
+
+/* Optional: ensure file chooser headerbar blends */
+file-chooser headerbar,
+file-chooser headerbar * {
+	background-color: transparent !important;
+	box-shadow: none !important;
+}

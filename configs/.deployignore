@@ -1,0 +1,10 @@
+# Paths are relative to this configs directory.
+# Blank lines and comments are ignored.
+#
+# Examples:
+#   hypr/
+#   waybar/style.css
+#   .zshrc
+#
+# Keep local VS Code settings untouched if this repo gains a Code config later.
+Code/

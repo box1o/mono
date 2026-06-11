@@ -1,0 +1,100 @@
+/* Mono Custom GTK Theme Overrides */
+
+:root {
+	--mono-bg: #181616;
+	--mono-fg: #c5c9c5;
+	--mono-selection: #8ba4b0;
+	--mono-selection-text: #181616;
+	--mono-border-active: #625e5a;
+	--mono-border-inactive: #393836;
+	--mono-accent-red: #c4746e;
+	--mono-accent-green: #8a9a7b;
+	--mono-accent-yellow: #c4b28a;
+	--mono-accent-blue: #8ba4b0;
+	--mono-accent-purple: #a292a3;
+	--mono-accent-cyan: #8ea4a2;
+	--mono-tab-active-bg: #2d2a2e;
+	--mono-tab-inactive-fg: #727169;
+}
+
+/* Text Selection */
+selection {
+	background-color: var(--mono-selection);
+	color: var(--mono-selection-text);
+}
+
+/* Buttons */
+button {
+	background-color: var(--mono-tab-active-bg);
+	color: var(--mono-fg);
+	border-color: var(--mono-border-inactive);
+}
+
+button:hover {
+	background-color: var(--mono-border-active);
+}
+
+button:active,
+button:checked {
+	background-color: var(--mono-accent-blue);
+	color: var(--mono-selection-text);
+}
+
+/* Entry/Input Fields */
+entry {
+	background-color: var(--mono-tab-active-bg);
+	color: var(--mono-fg);
+	border-color: var(--mono-border-inactive);
+}
+
+entry:focus {
+	border-color: var(--mono-accent-blue);
+}
+
+/* Headerbar */
+headerbar {
+	background-color: var(--mono-tab-active-bg);
+	color: var(--mono-fg);
+	border-bottom: 1px solid var(--mono-border-inactive);
+}
+
+/* Expander */
+expander arrow {
+	color: var(--mono-tab-inactive-fg);
+}
+
+expander arrow:checked {
+	color: var(--mono-accent-blue);
+}
+
+/* Remove rounded translucent frame and shadows in file-chooser/portal dialogs */
+/* These rules aim to make xdg-desktop-portal / GTK file choosers use a flat transparent background
+	 so Electron apps' portals do not show the rounded translucent frame. */
+file-chooser,
+.file-chooser,
+file-chooser-dialog,
+.file-chooser-dialog,
+dialog,
+.backdrop,
+.portal-dialog {
+	background-color: transparent !important;
+	box-shadow: none !important;
+	border: none !important;
+	border-radius: 0 !important;
+	outline: none !important;
+}
+
+/* Remove strong focus rings that can create visible framed edges */
+*:focus {
+	box-shadow: none !important;
+	outline: none !important;
+}
+
+/* Fallback for GtkOverlay or other portal wrappers */
+.gtk-portal-overlay,
+.xdg-portal-overlay,
+.portal-overlay {
+	background-color: transparent !important;
+	box-shadow: none !important;
+	border-radius: 0 !important;
+}

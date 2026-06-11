@@ -1,0 +1,13 @@
+[General]
+ColorScheme=BreezeDark
+Name=Breeze
+shadeSortColumn=true
+
+[Icons]
+Theme=breeze-dark
+
+[KDE]
+SingleClick=true
+ShowIconsInMenuItems=true
+ShowIconsOnPushButtons=true
+widgetStyle=Breeze

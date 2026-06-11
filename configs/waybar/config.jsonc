@@ -1,0 +1,173 @@
+{
+  "layer": "top",
+  "position": "top",
+  "height": 16,
+  "spacing": 0,
+
+  "modules-left": ["hyprland/workspaces"],
+  "modules-center": ["hyprland/window"],
+  "modules-right": ["tray", "privacy", "custom/dunst", "custom/media", "custom/dcmd", "power-profiles-daemon", "backlight", "pulseaudio", "pulseaudio#microphone", "network", "battery", "clock"],
+
+  "hyprland/workspaces": {
+    "format": "{name}",
+    "disable-scroll": true,
+    "all-outputs": true,
+    "active-only": false,
+    "on-click": "activate",
+    "persistent_workspaces": {
+      "1": [],
+      "2": [],
+      "3": [],
+      "4": [],
+      "5": [],
+      "6": [],
+      "7": [],
+      "8": [],
+      "9": []
+    }
+  },
+
+  "hyprland/window": {
+    "format": "{}",
+    "max-length": 76,
+    "separate-outputs": true
+  },
+
+  "clock": {
+    "format": "{:%H:%M}",
+    "format-alt": "{:%Y-%m-%d}",
+    "on-click": "gnome-calendar",
+    "tooltip-format": "<tt>{calendar}</tt>",
+    "calendar": {
+      "mode": "month",
+      "on-scroll": 1
+    }
+  },
+
+  "battery": {
+    "states": {
+      "warning": 30,
+      "critical": 15
+    },
+    "format": "{icon} {capacity}%",
+    "format-charging": "󰂄 {capacity}%",
+    "format-plugged": "󱘖 {capacity}%",
+    "on-click": "mission-center",
+    "format-icons": ["󰂎", "󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
+  },
+
+  "network": {
+    "format-wifi": "󰖩 {essid}",
+    "format-ethernet": "󰈀 wired",
+    "format-linked": "󰈀 {ifname}",
+    "format-disconnected": "󰖪 offline",
+    "on-click": "nm-connection-editor",
+    "on-click-right": "kitty -e nmtui",
+    "tooltip-format": "Interface: {ifname}\nIP: {ipaddr}\nGateway: {gwaddr}"
+  },
+
+  "pulseaudio": {
+    "format": "{icon} {volume}%",
+    "format-bluetooth": "󰂯 {volume}%",
+    "format-bluetooth-muted": "󰂲 muted",
+    "format-muted": "󰖁 muted",
+    "format-icons": {
+      "headphone": "󰋋",
+      "hands-free": "󰋎",
+      "headset": "󰋎",
+      "speaker": "󰓃",
+      "default": ["󰕿", "󰖀", "󰕾"]
+    },
+    "on-click": "pavucontrol"
+  },
+
+  "pulseaudio#microphone": {
+    "format": "{format_source}",
+    "format-source": "󰍬 {volume}%",
+    "format-source-muted": "󰍭 muted",
+    "on-click": "pavucontrol -t 4",
+    "tooltip-format": "Input: {desc}\nVolume: {volume}%"
+  },
+
+  "power-profiles-daemon": {
+    "format": "{icon}",
+    "tooltip-format": "Power profile: {profile}\nDriver: {driver}",
+    "format-icons": {
+      "performance": "󰓅",
+      "balanced": "󰾅",
+      "power-saver": "󰌪",
+      "default": "󰾅"
+    },
+    "on-click": "~/.local/share/bin/power-profile.sh"
+  },
+
+  "privacy": {
+    "icon-spacing": 5,
+    "icon-size": 10,
+    "transition-duration": 180,
+    "modules": [
+      {
+        "type": "screenshare",
+        "tooltip": true,
+        "tooltip-icon-size": 20
+      },
+      {
+        "type": "audio-in",
+        "tooltip": true,
+        "tooltip-icon-size": 20
+      },
+      {
+        "type": "audio-out",
+        "tooltip": true,
+        "tooltip-icon-size": 20
+      }
+    ],
+    "ignore-monitor": true
+  },
+
+  "custom/dcmd": {
+    "format": "󰘳",
+    "tooltip": true,
+    "tooltip-format": "dcmd",
+    "on-click": "kitty --title dcmd -e ~/.local/share/bin/dcmd"
+  },
+
+  "custom/dunst": {
+    "exec": "dunstctl is-paused | grep -q true && echo '󰂛' || echo '󰂚'",
+    "interval": 2,
+    "return-type": "text",
+    "tooltip": true,
+    "tooltip-format": "notifications: left toggle, right history",
+    "on-click": "dunstctl set-paused toggle",
+    "on-click-right": "dunstctl history-pop"
+  },
+
+  "custom/media": {
+    "exec": "~/.config/waybar/scripts/media.sh",
+    "interval": 2,
+    "return-type": "text",
+    "max-length": 36,
+    "on-click": "playerctl play-pause",
+    "on-click-right": "playerctl next",
+    "on-scroll-up": "playerctl next",
+    "on-scroll-down": "playerctl previous",
+    "tooltip": true
+  },
+
+  "backlight": {
+    "format": "{icon} {percent}%",
+    "format-icons": ["󰃞", "󰃟", "󰃠"],
+    "on-scroll-up": "brightnessctl set 1%+",
+    "on-scroll-down": "brightnessctl set 1%-"
+  },
+
+  "tray": {
+    "icon-size": 10,
+    "spacing": 7,
+    "show-passive-items": true,
+    "icons": {
+      "blueman": "bluetooth",
+      "nm-applet": "network-wireless"
+    }
+  }
+}

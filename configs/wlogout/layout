@@ -1,0 +1,30 @@
+{
+    "label" : "lock",
+    "action" : "/home/pixel/.local/share/bin/session.sh lock",
+    "text" : "Lock",
+    "keybind" : "l"
+}
+{
+    "label" : "suspend",
+    "action" : "/home/pixel/.local/share/bin/session.sh suspend",
+    "text" : "Suspend",
+    "keybind" : "u"
+}
+{
+    "label" : "logout",
+    "action" : "/home/pixel/.local/share/bin/session.sh logout",
+    "text" : "Logout",
+    "keybind" : "e"
+}
+{
+    "label" : "shutdown",
+    "action" : "/home/pixel/.local/share/bin/session.sh shutdown",
+    "text" : "Shutdown",
+    "keybind" : "s"
+}
+{
+    "label" : "reboot",
+    "action" : "/home/pixel/.local/share/bin/session.sh reboot",
+    "text" : "Reboot",
+    "keybind" : "r"
+}

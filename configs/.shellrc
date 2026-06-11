@@ -1,0 +1,195 @@
+# common paths
+path_prepend() {
+  [[ -d "$1" ]] || return 0
+  case ":$PATH:" in
+    *":$1:"*) ;;
+    *) PATH="$1:$PATH" ;;
+  esac
+}
+
+path_append() {
+  [[ -d "$1" ]] || return 0
+  case ":$PATH:" in
+    *":$1:"*) ;;
+    *) PATH="$PATH:$1" ;;
+  esac
+}
+
+export SCRIPT_DIR="$HOME/.local/share/bin"
+path_prepend "$HOME/.local/bin"
+path_prepend "$SCRIPT_DIR"
+path_prepend "$HOME/go/bin"
+path_prepend "$HOME/.opencode/bin"
+
+# aliases
+alias ls='ls --color=auto'
+alias grep='grep --color=auto'
+alias l='ls -a'
+alias vim='nvim'
+alias x='nvim'
+alias c='clear'
+alias r='rm -rf'
+alias m='mkdir'
+alias t='touch'
+alias i='sudo pacman -Syu'
+alias f='fzf'
+alias dcmd="$SCRIPT_DIR/dcmd"
+alias dps="docker ps --format '{{.Names}} {{.Image}} {{.Status}}'"
+alias mp="mpremote connect /dev/ttyACM0"
+alias rdp="$SCRIPT_DIR/rdp.sh"
+alias scaffold="bash $SCRIPT_DIR/scaffold.sh"
+alias ai="bash $SCRIPT_DIR/ai.sh"
+alias ccp="bash $SCRIPT_DIR/ccp.sh"
+alias cc='cd ~/Code/cc && tmux new -A -s cc'
+
+# fzf
+export FZF_DEFAULT_OPTS="
+--layout=reverse
+--border=rounded
+--padding=1
+--margin=1
+--info=inline
+--prompt='> '
+--pointer='>'
+--marker='*'
+--cycle
+"
+
+# nvm
+export NVM_DIR="$HOME/.nvm"
+[[ -s "$NVM_DIR/nvm.sh" ]] && source "$NVM_DIR/nvm.sh"
+[[ -s "$NVM_DIR/bash_completion" ]] && source "$NVM_DIR/bash_completion"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+path_prepend "$BUN_INSTALL/bin"
+[[ -s "$BUN_INSTALL/_bun" ]] && source "$BUN_INSTALL/_bun"
+
+# java
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+path_prepend "$JAVA_HOME/bin"
+
+# android
+export ANDROID_HOME="$HOME/Android/Sdk"
+export ANDROID_SDK_ROOT="$ANDROID_HOME"
+path_prepend "$ANDROID_HOME/cmdline-tools/latest/bin"
+path_prepend "$ANDROID_HOME/emulator"
+path_prepend "$ANDROID_HOME/platform-tools"
+
+export PATH
+
+# codex
+[[ -f "$HOME/.config/codex-azure-openai.env" ]] && source "$HOME/.config/codex-azure-openai.env"
+export AZURE_RESOURCE_NAME="teckstaters"
+[[ -n "${OPENAI_API_KEY:-}" ]] && export AZURE_OPENAI_API_KEY="$OPENAI_API_KEY"
+
+# python
+export PYTHONPATH="$HOME/work/Core"
+
+ap() {
+  export PYTHONPATH="$HOME/work/Core"
+  source "$HOME/work/Core/.venv/bin/activate"
+}
+
+# bp
+bp() {
+  local -a exclude_dirs
+  exclude_dirs=(".git" "docs" "node_modules" "vendor" "dist" "build")
+
+  local copy_clipboard=true
+
+  while [[ "${1:-}" != "" ]]; do
+    case "$1" in
+      -n|--no-copy)
+        copy_clipboard=false
+        shift
+        ;;
+      *)
+        exclude_dirs=("$@")
+        break
+        ;;
+    esac
+  done
+
+  local -a exclude_args
+  local d
+  for d in "${exclude_dirs[@]}"; do
+    exclude_args+=(-not -path "*/$d/*")
+  done
+
+  local result
+  result="$(find "$(pwd)" -type f "${exclude_args[@]}" -exec printf '"%s"\n' '{}' \;)"
+
+  echo "$result"
+
+  if [[ "$copy_clipboard" == true ]] && command -v wl-copy >/dev/null 2>&1; then
+    echo "$result" | wl-copy
+    echo "//NOTE: Results copied to clipboard"
+  fi
+}
+
+# tmux
+ta() {
+  command -v tmux >/dev/null 2>&1 || return 0
+  command -v fzf >/dev/null 2>&1 || { echo "tmux: fzf not found"; return 1; }
+  [[ -t 0 && -t 1 ]] || { echo "tmux: not a terminal"; return 1; }
+
+  local sessions
+  sessions="$(tmux list-sessions -F '#{session_name} :: #{session_windows} :: #{?session_attached,yes,no}' 2>/dev/null || true)"
+
+  if [[ -z "$sessions" ]]; then
+    local name
+    if [[ -n "${ZSH_VERSION:-}" ]]; then
+      read -r "name?No tmux sessions. Create one [main]: "
+    else
+      read -r -p "No tmux sessions. Create one [main]: " name
+    fi
+    tmux new-session -A -s "${name:-main}"
+    return 0
+  fi
+
+  local picked
+  picked="$(
+    printf '%s\n' "$sessions" | fzf \
+      --height=55% \
+      --layout=reverse \
+      --border=rounded \
+      --padding=1 \
+      --margin=1 \
+      --info=inline \
+      --cycle \
+      --prompt='tmux> ' \
+      --delimiter=' :: ' \
+      --with-nth=1,2,3 \
+      --header='Enter: attach/switch | Tab: select | /: search | Esc: cancel' \
+      --preview='tmux list-windows -t {1} -F "#{window_index}: #{window_name} (#{window_panes})" 2>/dev/null | sed -n "1,140p"' \
+      --preview-window='down:60%:wrap' \
+      --no-separator
+  )" || return 0
+
+  [[ -z "$picked" ]] && return 0
+
+  local name="${picked%% :: *}"
+  [[ -z "$name" ]] && return 0
+
+  if [[ -n "${TMUX:-}" ]]; then
+    tmux switch-client -t "$name"
+  else
+    tmux new-session -A -s "$name"
+  fi
+}
+
+tk() {
+  tmux list-sessions -F '#{session_name}' |
+    fzf --multi --prompt='kill> ' |
+    xargs -r tmux kill-session -t
+}
+
+# mgw
+sdd() {
+  cd "$HOME/work/fmc/mgw/ugw/repo" || return
+  bash --rcfile <(
+    printf '%s\n' 'source ~/.bashrc 2>/dev/null || true'
+    printf '%s\n' 'source ../../ci-gw/gw/alias.sh .'
+  )
+}

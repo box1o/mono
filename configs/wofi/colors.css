@@ -1,0 +1,90 @@
+#window {
+    all: unset;
+    background-color: rgba(24, 22, 22, 0.96);
+    background-image: linear-gradient(rgba(24, 22, 22, 0.88), rgba(24, 22, 22, 0.92)), url("../hypr/img/life.jpg");
+    background-size: cover;
+    background-position: center;
+    color: #c5c9c5;
+    border: 1px solid #393836;
+    border-radius: 4px;
+    font-family: "JetBrains Mono Nerd Font", "JetBrains Mono", monospace;
+    font-size: 9px;
+}
+
+#input {
+    margin: 6px 7px 4px;
+    padding: 3px 8px;
+    min-height: 22px;
+    border: 1px solid #393836;
+    color: #c5c9c5;
+    background-color: #1f1d1d;
+    border-radius: 4px;
+}
+
+#input:focus {
+    border-color: #8ba4b0;
+}
+
+#input image {
+    color: #727169;
+}
+
+#inner-box {
+    margin: 2px 6px 6px;
+    border: none;
+    background-color: transparent;
+    border-radius: 4px;
+}
+
+#outer-box {
+    margin: 0;
+    border: none;
+    background-color: transparent;
+}
+
+#scroll {
+    margin: 0;
+    border: none;
+    border-radius: 4px;
+}
+
+#text {
+    margin: 0 6px;
+    border: none;
+    color: #c5c9c5;
+}
+
+#entry {
+    min-height: 20px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background-color: transparent;
+}
+
+#entry:hover {
+    background-color: rgba(197, 201, 197, 0.05);
+}
+
+#entry:selected {
+    background-color: rgba(98, 94, 90, 0.42);
+    border-radius: 3px;
+}
+
+#entry:selected #text {
+    color: #dcd7ba;
+}
+
+#entry:selected #img {
+    opacity: 1;
+}
+
+#img {
+    min-width: 16px;
+    min-height: 16px;
+    margin: 0 6px 0 0;
+    opacity: 0.86;
+}
+
+#scroll scrollbar {
+    opacity: 0;
+}

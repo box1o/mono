@@ -1,0 +1,35 @@
+[ColorScheme]
+Name=Mono Custom Dark
+Description=Custom dark theme with kitty colors
+
+[Colors:Window]
+BackgroundColor=#181616
+ForegroundColor=#c5c9c5
+ButtonColor=#2d2a2e
+ButtonTextColor=#c5c9c5
+
+[Colors:Button]
+BackgroundColor=#2d2a2e
+ForegroundColor=#c5c9c5
+DecorationColor=#625e5a
+
+[Colors:Selection]
+BackgroundColor=#8ba4b0
+ForegroundColor=#181616
+
+[Colors:Tooltip]
+BackgroundColor=#393836
+ForegroundColor=#c5c9c5
+
+[Colors:Common]
+BackgroundColor=#181616
+ForegroundColor=#c5c9c5
+ButtonBackgroundColor=#2d2a2e
+ButtonForegroundColor=#c5c9c5
+LinkColor=#8ba4b0
+VisitedLinkColor=#a292a3
+HighlightedBackgroundColor=#8ba4b0
+HighlightedTextColor=#181616
+NegativeTextColor=#c4746e
+NeutralTextColor=#c4b28a
+PositiveTextColor=#8a9a7b

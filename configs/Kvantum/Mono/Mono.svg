@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" version="1.1">
+  <defs>
+    <style>
+      .base { fill: #1f1d1d; }
+      .window { fill: #181616; }
+      .hover { fill: #2d2a2e; }
+      .active { fill: #625e5a; }
+      .line { stroke: #2d2a2e; stroke-width: 1; }
+    </style>
+  </defs>
+  <rect id="base" class="base" x="0" y="0" width="64" height="64"/>
+  <rect id="window" class="window" x="1" y="1" width="62" height="62"/>
+  <rect id="button" class="base" x="2" y="2" width="60" height="20"/>
+  <rect id="button-hover" class="hover" x="2" y="24" width="60" height="18"/>
+  <rect id="button-pressed" class="active" x="2" y="44" width="60" height="18"/>
+  <line id="splitter" class="line" x1="0" y1="32" x2="64" y2="32"/>
+</svg>

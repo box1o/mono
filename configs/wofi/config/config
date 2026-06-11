@@ -1,0 +1,15 @@
+show=drun
+width=660
+height=280
+always_parse_args=true
+show_all=false
+term=kitty
+hide_scroll=true
+print_command=true
+insensitive=true
+prompt=run
+columns=2
+allow_images=true
+image_size=12
+matching=fuzzy
+key_expand=Tab

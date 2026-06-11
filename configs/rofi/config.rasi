@@ -1,0 +1,20 @@
+configuration {
+    modi: "drun";
+    show-icons: true;
+    icon-theme: "breeze-dark";
+    terminal: "kitty";
+
+    drun-display-format: "{name}";
+    drun-match-fields: "name,generic,exec,categories,keywords";
+
+    matching: "fuzzy";
+    case-sensitive: false;
+    cycle: true;
+    hover-select: false;
+    click-to-exit: true;
+    fixed-num-lines: true;
+    location: 0;
+    font: "JetBrains Mono Nerd Font 10";
+}
+
+@theme "theme"

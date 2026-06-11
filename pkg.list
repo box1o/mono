@@ -1,0 +1,160 @@
+# Base tooling
+base-devel
+git
+curl
+jq
+tar
+openssl
+coreutils
+findutils
+xdg-utils
+tidy
+tree
+fzf
+zoxide
+fd
+tmux
+btop
+docker
+docker-buildx
+docker-compose
+trash-cli
+xdg-user-dirs
+
+# Display server and Hyprland
+hyprland
+swaybg
+hyprlock
+hypridle
+hyprpolkitagent
+hyprsunset
+hyprcursor
+hyprpicker
+xdg-desktop-portal
+xdg-desktop-portal-hyprland
+xdg-desktop-portal-gtk
+polkit-gnome
+
+# User interface
+waybar
+wlogout
+rofi
+dunst
+libnotify
+networkmanager
+network-manager-applet
+tailscale
+
+# Terminal and shell
+kitty
+zsh
+starship
+
+# Editor and development
+neovim
+go
+cmake
+gcc
+make
+python
+python-pip
+python-textual
+github-cli
+tree-sitter
+lazygit
+luarocks
+
+# Fonts
+ttf-jetbrains-mono
+ttf-jetbrains-mono-nerd
+noto-fonts
+noto-fonts-cjk
+noto-fonts-emoji
+noto-fonts-extra
+
+# Applications
+zen-browser-bin
+firefox
+postman-bin
+teams-for-linux
+zathura
+telegram-desktop
+nautilus
+vlc
+bitwarden
+loupe
+gnome-calculator
+gnome-calendar
+gnome-clocks
+gnome-weather
+gnome-characters
+gnome-logs
+mission-center
+seahorse
+gparted
+baobab
+localsend
+
+# System utilities
+brightnessctl
+gnome-disk-utility
+playerctl
+socat
+gum
+power-profiles-daemon
+age
+gnome-keyring
+udiskie
+gvfs
+gvfs-mtp
+gvfs-gphoto2
+
+# Clipboard
+wl-clipboard
+cliphist
+
+# Screenshot and media
+grim
+slurp
+swappy
+ffmpeg
+imagemagick
+wf-recorder
+
+# Audio
+pipewire
+pipewire-pulse
+wireplumber
+pamixer
+pavucontrol
+easyeffects
+helvum
+qpwgraph
+
+# Bluetooth
+bluez
+bluez-utils
+blueman
+
+# Theming and GTK/Qt
+adw-gtk-theme
+breeze
+breeze-gtk
+breeze-icons
+candy-icons
+gtk3
+qt5ct
+qt6ct
+qt5-wayland
+qt6-wayland
+kvantum
+kvantum-qt5
+
+# Remote access
+freerdp
+
+# Android
+android-tools
+
+# MicroPython
+python-mpremote

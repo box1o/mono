@@ -1,0 +1,256 @@
+@define-color bg #181616;
+@define-color bg-soft #1f1d1d;
+@define-color fg #c5c9c5;
+@define-color muted #727169;
+@define-color line #2d2a2e;
+@define-color active #625e5a;
+@define-color accent #8ba4b0;
+@define-color yellow #c4b28a;
+@define-color red #c4746e;
+
+* {
+  border: none;
+  border-radius: 0;
+  font-family: "JetBrains Mono Nerd Font", "JetBrains Mono", monospace;
+  font-size: 9px;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+}
+
+window#waybar {
+  background: alpha(@bg, 0.88);
+  color: @fg;
+  border: none;
+}
+
+#workspaces {
+  padding-left: 2px;
+}
+
+#workspaces button {
+  color: @muted;
+  padding: 0 2px;
+  min-height: 16px;
+  background: transparent;
+  border-top: 1px solid transparent;
+  border-bottom: none;
+  font-size: 8px;
+}
+
+#workspaces button:hover {
+  color: @accent;
+  background: alpha(@fg, 0.04);
+}
+
+#workspaces button.active {
+  color: @fg;
+  background: alpha(@fg, 0.04);
+  border-top-color: alpha(@active, 0.85);
+}
+
+#workspaces button.urgent {
+  color: @red;
+  border-top-color: alpha(@red, 0.75);
+}
+
+#window {
+  color: @muted;
+  padding: 0 8px;
+  font-style: italic;
+}
+
+#tray,
+#custom-dcmd,
+#custom-dunst,
+#custom-media,
+#power-profiles-daemon,
+#privacy,
+#pulseaudio.microphone,
+#backlight,
+#pulseaudio,
+#network,
+#battery,
+#clock {
+  color: @fg;
+  padding: 0 5px;
+  background: transparent;
+}
+
+#tray {
+  padding-left: 4px;
+  padding-right: 8px;
+  margin-right: 2px;
+}
+
+#custom-media,
+#custom-dunst,
+#power-profiles-daemon,
+#privacy,
+#pulseaudio.microphone {
+  color: @muted;
+}
+
+#custom-dcmd {
+  color: @accent;
+  margin-right: 3px;
+}
+
+#custom-dcmd:hover,
+#custom-dunst:hover,
+#custom-media:hover,
+#power-profiles-daemon:hover,
+#privacy:hover,
+#clock:hover,
+#pulseaudio:hover,
+#network:hover,
+#backlight:hover {
+  color: @accent;
+}
+
+#clock {
+  color: @fg;
+}
+
+#backlight {
+  color: @fg;
+}
+
+#pulseaudio {
+  color: @fg;
+}
+
+#pulseaudio.muted {
+  color: @muted;
+}
+
+#pulseaudio.microphone {
+  padding-left: 4px;
+  padding-right: 6px;
+}
+
+#pulseaudio.microphone.source-muted {
+  color: @muted;
+}
+
+#power-profiles-daemon {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+#power-profiles-daemon.performance {
+  color: @yellow;
+}
+
+#power-profiles-daemon.power-saver {
+  color: @accent;
+}
+
+#privacy {
+  padding-left: 6px;
+  padding-right: 6px;
+  color: @red;
+}
+
+#privacy-item {
+  color: @red;
+}
+
+#privacy-item.audio-out {
+  color: @yellow;
+}
+
+#network {
+  color: @fg;
+}
+
+#network.disconnected {
+  color: @red;
+}
+
+#custom-dunst {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+#custom-media {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+#battery {
+  color: @fg;
+}
+
+#battery.warning {
+  color: @yellow;
+}
+
+#battery.critical {
+  color: @red;
+  background: alpha(@red, 0.08);
+}
+
+tooltip {
+  background: alpha(@bg-soft, 0.96);
+  color: @fg;
+  border: 1px solid @active;
+  border-radius: 4px;
+}
+
+tooltip label {
+  color: @fg;
+  padding: 5px;
+}
+
+menu,
+#tray menu {
+  margin-top: 1px;
+  padding: 2px;
+  background: alpha(@bg-soft, 0.98);
+  color: @fg;
+  border: 1px solid @active;
+  border-radius: 4px;
+  font-family: "JetBrains Mono Nerd Font", "JetBrains Mono", monospace;
+  font-size: 9px;
+}
+
+menuitem,
+#tray menu menuitem {
+  min-height: 16px;
+  padding: 1px 8px;
+  margin: 0;
+  border-radius: 3px;
+  color: @fg;
+  background: transparent;
+}
+
+menuitem:hover,
+#tray menu menuitem:hover {
+  color: @fg;
+  background: alpha(@active, 0.42);
+}
+
+menuitem:hover label,
+#tray menu menuitem:hover label {
+  color: @fg;
+  background: transparent;
+}
+
+menuitem arrow,
+#tray menu menuitem arrow {
+  color: @muted;
+  background: transparent;
+}
+
+menuitem:disabled,
+#tray menu menuitem:disabled {
+  color: @muted;
+}
+
+menu separator,
+#tray menu separator {
+  min-height: 1px;
+  margin: 2px 5px;
+  background: @line;
+}
