@@ -321,7 +321,7 @@ class DeviceControlApp(App[None]):
         if isinstance(last_device, str) and last_device in self.devices:
             self.current_device = last_device
         else:
-            self.current_device = "cc0002" if "cc0002" in self.devices else self.devices[0]
+            self.current_device = "aj0002" if "aj0002" in self.devices else self.devices[0]
         self.set_status("ready")
         self.log_info(f"Loaded devices: {', '.join(self.devices)}")
 
