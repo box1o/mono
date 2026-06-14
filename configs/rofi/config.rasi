@@ -14,7 +14,7 @@ configuration {
     click-to-exit: true;
     fixed-num-lines: true;
     location: 0;
-    font: "Noto Sans 10";
+    font: "Adwaita Sans 10";
 }
 
 @theme "theme"

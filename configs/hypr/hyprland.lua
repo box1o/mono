@@ -18,8 +18,8 @@ hl.monitor({ output = "eDP-2", mode = "1920x1080@144", position = "0x0", scale =
 hl.monitor({ output = "HDMI-A-1", mode = "1920x1080@60", position = "0x0", scale = 1 })
 
 hl.env("XDG_CURRENT_DESKTOP", "Hyprland")
-hl.env("GTK_FONT_NAME", "Noto Sans 11")
-hl.env("QT_FONT_NAME", "Noto Sans")
+hl.env("GTK_FONT_NAME", "Adwaita Sans 11")
+hl.env("QT_FONT_NAME", "Adwaita Sans")
 hl.env("QT_QPA_PLATFORMTHEME", "qt6ct")
 hl.env("QT_STYLE_OVERRIDE", "Breeze")
 hl.env("XCURSOR_SIZE", "24")

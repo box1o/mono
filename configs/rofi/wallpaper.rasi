@@ -8,7 +8,7 @@
     accent:   #8ba4b0;
     selected: #dcd7ba;
 
-    font: "Noto Sans 10";
+    font: "Adwaita Sans 10";
     background-color: transparent;
     text-color: @fg;
 }
@@ -107,7 +107,7 @@ element-text {
     enabled: false;
     horizontal-align: 0.5;
     vertical-align: 0.5;
-    font: "Noto Sans 9";
+    font: "Adwaita Sans 9";
     text-color: inherit;
     background-color: transparent;
 }

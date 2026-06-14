@@ -65,6 +65,7 @@ lazygit
 luarocks
 
 # Fonts
+adwaita-fonts
 ttf-jetbrains-mono
 ttf-jetbrains-mono-nerd
 noto-fonts
