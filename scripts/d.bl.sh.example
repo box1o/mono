@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Project commands for `d`. Copy with: d-init
+
+. "$(gbl log)"
+
+# gblcmd_descr_build='run a build step'
+# gblcmd_build() {
+# 	log "building..."
+# }

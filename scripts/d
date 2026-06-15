@@ -1,0 +1,338 @@
+#!/usr/bin/env bash
+# GBashLib-compatible runner for ./d.bl.sh (gblcmd_* commands).
+
+set -euo pipefail
+
+D_SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+D_BL_SH_DIR=""
+D_BL_SH_FILE=""
+
+gbl() {
+	case "${1:-}" in
+	log) printf '%s\n' "$D_SCRIPT_DIR/d-log.lib.sh" ;;
+	*) return 1 ;;
+	esac
+}
+
+_d_fatal() {
+	echo -e "FATAL:\t $*" >&2
+	exit 1
+}
+
+_d_usage() {
+	local name descr var
+	echo "Usage: d [command] [args...]"
+	echo ""
+	echo "Commands defined in ${D_BL_SH_FILE:-./d.bl.sh}:"
+	mapfile -t cmd < <(_d_list_commands_raw)
+	for name in "${cmd[@]}"; do
+		descr=""
+		var="gblcmd_descr_${name}"
+		if [[ -n "${!var:-}" ]]; then
+			descr=" — ${!var}"
+		fi
+		printf '  %-24s%s\n' "$name" "$descr"
+	done
+	echo ""
+	echo "Tips:"
+	echo "  d        pick a command with fzf (when available)"
+	echo "  d help   show this help"
+	echo "  d-init   create ./d.bl.sh from template"
+}
+
+_d_list_commands_raw() {
+	compgen -A function |
+		sed -n 's/^gblcmd_\([^[:space:]]*\)$/\1/p' |
+		grep -Ev '^(descr_|autocomp_|zhelp$)' |
+		sort -u
+}
+
+_d_has_bl() {
+	local dir="${1:-.}"
+	[[ -f "$dir/d.bl.sh" || -d "$dir/d.bl.sh" ]]
+}
+
+_d_load_bl() {
+	local dir="${1:-.}"
+
+	if [[ -d "$dir/d.bl.sh" ]]; then
+		D_BL_SH_DIR="$(cd -- "$dir/d.bl.sh" && pwd)"
+		D_BL_SH_FILE="$D_BL_SH_DIR"
+		local file
+		shopt -s nullglob
+		for file in "$D_BL_SH_DIR"/*.bl.sh; do
+			# shellcheck source=/dev/null
+			source "$file"
+		done
+		shopt -u nullglob
+		return 0
+	fi
+
+	if [[ -f "$dir/d.bl.sh" ]]; then
+		D_BL_SH_DIR="$(cd -- "$dir" && pwd)"
+		D_BL_SH_FILE="$D_BL_SH_DIR/d.bl.sh"
+		# shellcheck source=/dev/null
+		source "$D_BL_SH_FILE"
+		return 0
+	fi
+
+	return 1
+}
+
+_d_source_context() {
+	_d_load_bl "." || _d_fatal "there is no ./d.bl.sh in this directory"
+}
+
+_d_match_commands() {
+	local query="$1"
+	local -a all=() matches=()
+	local name
+
+	mapfile -t all < <(_d_list_commands_raw)
+
+	if [[ -z "$query" ]]; then
+		printf '%s\n' "${all[@]}"
+		return 0
+	fi
+
+	for name in "${all[@]}"; do
+		if [[ "$name" == "$query"* ]]; then
+			matches+=("$name")
+		fi
+	done
+
+	if ((${#matches[@]})); then
+		printf '%s\n' "${matches[@]}"
+	else
+		printf '%s\n' "${all[@]}"
+	fi
+}
+
+_d_fzf_pick() {
+	local prompt="$1"
+	shift
+	local -a items=("$@")
+
+	[[ ${#items[@]} -gt 0 ]] || return 1
+
+	if [[ ${#items[@]} -eq 1 ]]; then
+		printf '%s\n' "${items[0]}"
+		return 0
+	fi
+
+	command -v fzf >/dev/null 2>&1 || _d_fatal "ambiguous command; install fzf or be more specific: ${items[*]}"
+	[[ -t 0 && -t 1 ]] || {
+		_d_usage >&2
+		return 1
+	}
+
+	printf '%s\n' "${items[@]}" |
+		FZF_DEFAULT_OPTS= fzf \
+			--height=40% \
+			--layout=reverse \
+			--border=rounded \
+			--margin=0 \
+			--padding=0 \
+			--prompt="${prompt}> " \
+			--header='Enter: run | Esc: cancel'
+}
+
+_d_resolve_command() {
+	local query="$1"
+	local -a matches=()
+
+	mapfile -t matches < <(_d_match_commands "$query")
+
+	if ((${#matches[@]} == 0)); then
+		_d_fatal "no commands found in ./d.bl.sh"
+	elif ((${#matches[@]} == 1)); then
+		printf '%s\n' "${matches[0]}"
+	elif [[ -z "$query" ]]; then
+		_d_fzf_pick "d command" "${matches[@]}"
+	else
+		local picked
+		picked="$(_d_fzf_pick "d $query" "${matches[@]}")" || exit 130
+		[[ -n "$picked" ]] || exit 130
+		printf '%s\n' "$picked"
+	fi
+}
+
+_d_run_command() {
+	local cmd="$1"
+	shift
+
+	if [[ "$cmd" == "help" || "$cmd" == "zhelp" ]]; then
+		_d_usage
+		return 0
+	fi
+
+	if ! declare -F "gblcmd_$cmd" >/dev/null 2>&1; then
+		local resolved
+		resolved="$(_d_resolve_command "$cmd")" || exit $?
+		cmd="$resolved"
+	fi
+
+	gblcmd_$cmd "$@"
+}
+
+_d_print_autocomplete() {
+	cat <<'EOF'
+_d_complete() {
+	local cur=${COMP_WORDS[COMP_CWORD]}
+	if ! command d _has_bl >/dev/null 2>&1; then
+		return 0
+	fi
+	if (( COMP_CWORD != 1 )); then
+		return 0
+	fi
+	[[ "$cur" == d.bl* || "$cur" == *.bl.sh* ]] && cur=""
+	mapfile -t COMPREPLY < <(compgen -W "$(command d _complete_words 2>/dev/null)" -- "$cur")
+	((${#COMPREPLY[@]})) || mapfile -t COMPREPLY < <(compgen -W "$(command d _complete_words 2>/dev/null)" -- "")
+}
+complete -o nospace -F _d_complete d 2>/dev/null || true
+EOF
+}
+
+_d_print_zsh_setup() {
+	cat <<'EOF'
+_d_zsh() {
+	local -a cmds
+	local curword="${words[CURRENT]:-}"
+
+	command d _has_bl >/dev/null 2>&1 || {
+		_message -r 'no ./d.bl.sh in this directory'
+		return 1
+	}
+	(( CURRENT > 2 )) && return 0
+
+	if [[ "$curword" == d.bl* || "$curword" == *.bl.sh* ]]; then
+		words[CURRENT]=""
+		curword=""
+	fi
+
+	cmds=("${(@f)$(command d _list_commands 2>/dev/null)}")
+	(( ${#cmds} )) || return 1
+	[[ -n "$curword" ]] && cmds=(${(@M)cmds:#${curword}*})
+	(( ${#cmds} )) || return 0
+
+	_values -s 'd command' "${cmds[@]}"
+}
+
+_d_pick_command() {
+	local prefix="${1:-}"
+	local -a items filtered
+	local sel
+
+	items=("${(@f)$(command d _list_commands 2>/dev/null)}")
+	(( ${#items} )) || return 1
+
+	if [[ -n "$prefix" ]]; then
+		filtered=(${(@M)items:#${prefix}*})
+		(( ${#filtered} )) || return 1
+		items=("${filtered[@]}")
+	fi
+
+	if (( ${#items} == 1 )); then
+		print -r -- "$items[1]"
+		return 0
+	fi
+
+	command -v fzf >/dev/null 2>&1 || return 1
+
+	sel=$(print -rl -- "${items[@]}" | FZF_DEFAULT_OPTS= fzf \
+		--height=40% --layout=reverse --border=rounded \
+		--margin=0 --padding=0 --info=inline --prompt='d> ' \
+		${prefix:+--query=$prefix}) || return 1
+	[[ -n "$sel" ]] || return 1
+	print -r -- "$sel"
+}
+
+_d_tab() {
+	local sel prefix
+
+	if command d _has_bl >/dev/null 2>&1; then
+		if [[ $LBUFFER =~ '^d[[:space:]]*$' ]]; then
+			if sel=$(_d_pick_command); then
+				LBUFFER="d ${sel} "
+				RBUFFER=""
+				zle redisplay
+				return 0
+			fi
+			LBUFFER="d "
+			CURSOR=${#LBUFFER}
+			zle expand-or-complete
+			return 0
+		fi
+
+		if [[ $LBUFFER =~ '^d[[:space:]]+([^[:space:]]+)$' ]]; then
+			prefix=$match[1]
+			if sel=$(_d_pick_command "$prefix"); then
+				LBUFFER="d ${sel} "
+				RBUFFER=""
+				zle redisplay
+				return 0
+			fi
+		fi
+	fi
+
+	zle expand-or-complete
+}
+
+compdef _d_zsh d
+zle -N _d_tab
+bindkey '^I' _d_tab
+bindkey -M viins '^I' _d_tab
+EOF
+}
+
+_d_meta() {
+	case "${1:-}" in
+	_print_autocomplete) _d_print_autocomplete ;;
+	_print_zsh_setup) _d_print_zsh_setup ;;
+	_has_bl) _d_has_bl "." && exit 0 || exit 1 ;;
+	_list_commands | _complete_words)
+		_d_source_context
+		if [[ "$1" == "_complete_words" ]]; then
+			_d_list_commands_raw | tr '\n' ' '
+		else
+			_d_list_commands_raw
+		fi
+		;;
+	*) return 1 ;;
+	esac
+}
+
+main() {
+	case "${1:-}" in
+	_print_autocomplete | _print_zsh_setup)
+		_d_meta "$1"
+		;;
+	_list_commands | _complete_words | _has_bl)
+		_d_meta "$1"
+		exit $?
+		;;
+	*)
+		_d_source_context
+
+		if (($# == 0)); then
+			local -a items=()
+			local picked=""
+			mapfile -t items < <(_d_list_commands_raw)
+			if ((${#items[@]} == 1)); then
+				set -- "${items[0]}"
+			elif command -v fzf >/dev/null 2>&1 && [[ -t 0 && -t 1 ]]; then
+				picked="$(_d_fzf_pick "d command" "${items[@]}")" || exit 130
+				[[ -n "$picked" ]] || exit 0
+				set -- "$picked"
+			else
+				_d_usage
+				exit 0
+			fi
+		fi
+
+		_d_run_command "$@"
+		;;
+	esac
+}
+
+main "$@"
