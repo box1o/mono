@@ -86,9 +86,11 @@ if [[ -x "$SCRIPT_DIR/d" ]]; then
 		eval "$("$SCRIPT_DIR/d" _print_zsh_setup 2>/dev/null)" 2>/dev/null || true
 		zstyle ':completion:*:*:d:*' file-patterns ''
 		zstyle ':completion:*:*:d:*' menu select=2
-		zstyle ':fzf-tab:complete:d:*' disabled-on any
 	else
 		eval "$("$SCRIPT_DIR/d" _print_autocomplete 2>/dev/null)" 2>/dev/null || true
+		# Restore normal Tab (undo old broken mono d bind -x that ran "\t" as a command)
+		bind -r '\C-i' 2>/dev/null || true
+		bind '"\C-i": complete' 2>/dev/null || bind '"\C-i": "\C-i"' 2>/dev/null || true
 	fi
 fi
 

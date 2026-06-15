@@ -2,7 +2,7 @@
 # Minimal logging helpers (GBashLib log.lib.sh subset)
 
 fatal() {
-	echo -e "FATAL:\t $*" >&2
+	echo -e "FATAL:\t $*\n\n---try help command for more information: d help\n" >&2
 	exit 1
 }
 
@@ -21,3 +21,7 @@ wrn() {
 gbl_fatal() { fatal "$@"; }
 gbl_log() { log "$@"; }
 gbl_err() { err "$@"; }
+
+error_trap() {
+	trap 'fatal "error on line ${LINENO}"' ERR
+}
