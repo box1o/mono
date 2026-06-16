@@ -34,6 +34,7 @@ Usage:
   mgw status
   mgw scrcpy mgw5
   mgw shell mgw5
+  mgw login mgw5
 
 After tunnel is started:
   adb connect mgw5
@@ -342,6 +343,35 @@ shell_device() {
   adb -s "$name:$ADB_PORT" shell
 }
 
+login_device() {
+  local raw_device="$1"
+  local dev
+  dev="$(normalize_device "$raw_device")"
+
+  start_device "$dev"
+
+  local name
+  name="$(device_name "$dev")"
+
+  if ! command -v adb >/dev/null 2>&1; then
+    error "adb not found"
+    exit 1
+  fi
+
+  adb connect "$name" >/dev/null || true
+  exec adb -s "$name:$ADB_PORT" shell -t \
+    'if [ ! -d /mnt/red-line-fs ]; then
+       echo "ERROR: /mnt/red-line-fs not found"
+       exit 1
+     fi
+     chroot /mnt/red-line-fs /usr/bin/env -i \
+       HOME=/root \
+       TERM=xterm \
+       PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+       SHELL=/bin/bash \
+       /bin/bash -l'
+}
+
 status() {
   list_devices
 
@@ -415,6 +445,14 @@ main() {
         exit 1
       fi
       shell_device "$2"
+      ;;
+
+    login)
+      if [[ -z "${2:-}" ]]; then
+        error "Usage: mgw login mgw5"
+        exit 1
+      fi
+      login_device "$2"
       ;;
 
     1|2|3|4|5|6|7|mgw1|mgw2|mgw3|mgw4|mgw5|mgw6|mgw7|mgr1|mgr2|mgr3|mgr4|mgr5|mgr6|mgr7)
