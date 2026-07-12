@@ -1,70 +1,59 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Notification ID for volume updates
-NOTIFY_ID=9993
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/shared.inc"
 
-# Maximum volume level
-MAX_VOLUME=100
+load_config volume
+need_cmd pactl
+need_cmd pamixer
 
-# Function to display usage
-print_error() {
-    echo "Usage: ./volumecontrol.sh <action>"
-    echo "Actions:"
-    echo "  i - increase volume"
-    echo "  d - decrease volume"
-    echo "  m - mute/unmute"
-    exit 1
+STEP="${VOLUME_STEP:-5}"
+MAX="${VOLUME_MAX:-100}"
+NOTIFY_ID="${VOLUME_NOTIFY_ID:-9993}"
+
+volume_notify() {
+	notify -p -r "$NOTIFY_ID" "Volume" "$1" >/dev/null || true
 }
 
-# Function to send notification
-notify() {
-    notify-send -p -r $NOTIFY_ID "Volume" "$1"
+set_volume() {
+	local delta="$1"
+	local current next
+
+	current="$(pamixer --get-volume)"
+	next="$((current + delta))"
+
+	if ((next > MAX)); then
+		next="$MAX"
+	elif ((next < 0)); then
+		next=0
+	fi
+
+	pactl set-sink-volume @DEFAULT_SINK@ "$next%"
+	volume_notify "Volume: $next%"
 }
 
-# Function to change volume
-change_volume() {
-    current_volume=$(pamixer --get-volume)
-    new_volume=$((current_volume $1))
-
-    if [ $new_volume -gt $MAX_VOLUME ]; then
-        new_volume=$MAX_VOLUME
-    elif [ $new_volume -lt 0 ]; then
-        new_volume=0
-    fi
-
-    pactl set-sink-volume @DEFAULT_SINK@ $new_volume%
-    notify "Volume: $new_volume%"
-}
-
-# Function to mute/unmute
 toggle_mute() {
-    pactl set-sink-mute @DEFAULT_SINK@ toggle
-    mute_status=$(pamixer --get-mute)
-    if [ "$mute_status" = "true" ]; then
-        notify "Volume: Muted"
-    else
-        current_volume=$(pamixer --get-volume)
-        notify "Volume: Unmuted ($current_volume%)"
-    fi
+	pactl set-sink-mute @DEFAULT_SINK@ toggle
+
+	if [[ "$(pamixer --get-mute)" == true ]]; then
+		volume_notify "Volume: muted"
+	else
+		volume_notify "Volume: $(pamixer --get-volume)%"
+	fi
 }
 
-# Check if an argument is provided
-if [ $# -eq 0 ]; then
-    print_error
-fi
-
-# Execute action based on the argument
-case "$1" in
-    i)
-        change_volume "+5"
-        ;;
-    d)
-        change_volume "-5"
-        ;;
-    m)
-        toggle_mute
-        ;;
-    *)
-        print_error
-        ;;
+case "${1:-}" in
+i | up | increase)
+	set_volume "$STEP"
+	;;
+d | down | decrease)
+	set_volume "-$STEP"
+	;;
+m | mute | toggle)
+	toggle_mute
+	;;
+*)
+	printf 'Usage: %s {i|d|m}\n' "$0" >&2
+	exit 1
+	;;
 esac

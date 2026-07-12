@@ -1,49 +1,68 @@
 #!/usr/bin/env bash
-
 set -euo pipefail
 
-print_error() {
-  cat << "EOF"
-    ./brightnesscontrol.sh <action>
-    ...valid actions are...
-        i -- <i>ncrease brightness [+5%]
-        d -- <d>ecrease brightness [-5%]
-EOF
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/shared.inc"
+
+load_config brightness
+need_cmd brightnessctl
+
+STEP_LOW="${BRIGHTNESS_STEP_LOW:-1%}"
+STEP="${BRIGHTNESS_STEP:-5%}"
+MIN="${BRIGHTNESS_MIN:-1%}"
+
+current_brightness() {
+	brightnessctl -m | awk -F, '{ gsub(/%/, "", $4); print $4; exit }'
 }
 
-send_notification() {
-  local brightness
-  local brightinfo
-  local bar
-
-  brightness="$(brightnessctl info | grep -oP "(?<=\\()\\d+(?=%)")"
-  brightinfo="$(brightnessctl info | awk -F "'" '/Device/ {print $2}')"
-  bar="$(seq -s "." "$((brightness / 15))" | sed 's/[0-9]//g')"
-  notify-send -a "brightness" -r 91190 -t 900 -i display-brightness-symbolic "${brightness}${bar}" "${brightinfo}"
+brightness_device() {
+	brightnessctl info | awk -F "'" '/Device/ { print $2; exit }'
 }
 
-get_brightness() {
-  brightnessctl -m | grep -o '[0-9]\+%' | head -c-2
+show_brightness() {
+	local percent device bar
+
+	percent="$(current_brightness)"
+	device="$(brightness_device)"
+	bar="$(seq -s . "$((percent / 15))" | sed 's/[0-9]//g')"
+
+	notify \
+		-a brightness \
+		-r 91190 \
+		-t 900 \
+		-i display-brightness-symbolic \
+		"${percent}${bar}" \
+		"${device:-display}"
+}
+
+increase_brightness() {
+	if [[ "$(current_brightness)" -lt 10 ]]; then
+		brightnessctl set "+$STEP_LOW"
+	else
+		brightnessctl set "+$STEP"
+	fi
+
+	show_brightness
+}
+
+decrease_brightness() {
+	if [[ "$(current_brightness)" -le 1 ]]; then
+		brightnessctl set "$MIN"
+	else
+		brightnessctl set "$STEP-"
+	fi
+
+	show_brightness
 }
 
 case "${1:-}" in
-i)  # increase the backlight
-  if [[ "$(get_brightness)" -lt 10 ]]; then
-    brightnessctl set +1%
-  else
-    brightnessctl set +5%
-  fi
-  send_notification ;;
-d)  # decrease the backlight
-  if [[ "$(get_brightness)" -le 1 ]]; then
-    brightnessctl set 1%
-  elif [[ "$(get_brightness)" -le 10 ]]; then
-    brightnessctl set 1%-
-  else
-    brightnessctl set 5%-
-  fi
-  send_notification ;;
-*)  # print error
-  print_error
-  exit 1 ;;
+i | up | increase)
+	increase_brightness
+	;;
+d | down | decrease)
+	decrease_brightness
+	;;
+*)
+	printf 'Usage: %s {i|d}\n' "$0" >&2
+	exit 1
+	;;
 esac

@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-CONFIG="$HOME/.config/rofi/config.rasi"
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/shared.inc"
 
-if ! pidof rofi >/dev/null 2>&1; then
-  rofi -show drun \
-    -config "$CONFIG" \
-    -modi "drun" \
-    -show-icons
-else
-  pkill rofi
+load_config rofi
+
+CONFIG="${ROFI_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/rofi/config.rasi}"
+
+if pgrep -x rofi >/dev/null 2>&1; then
+	pkill rofi
+	exit 0
 fi
+
+rofi \
+	-show drun \
+	-config "$CONFIG" \
+	-modi drun \
+	-show-icons

@@ -1,39 +1,25 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-set -e
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/shared.inc"
 
-BASE_PATH="src/features"
+load_config scaffold
 
-usage() {
-  echo "Usage: $0 <feature-name> [base-path]"
-  echo "  feature-name     Name of the feature (e.g., notes, invoice)"
-  echo "  base-path        (Optional) Base path (default: src/features)"
+name="${1:-}"
+base="${2:-${SCAFFOLD_BASE:-src/features}}"
+
+[[ -n "$name" ]] || die "usage: $0 <feature-name> [base-path]"
+
+feature="$base/$name"
+cap="${name^}"
+upper="${name^^}"
+
+create_directories() {
+	mkdir -p "$feature"/{components,hooks/api,services,store,types,constants,utils}
 }
 
-if [ -z "$1" ]; then
-  usage
-  exit 1
-fi
-
-ELEMENT="$1"
-
-if [ ! -z "$2" ]; then
-  BASE_PATH="$2"
-fi
-
-FEATURE_PATH="$BASE_PATH/$ELEMENT"
-SUBFOLDERS=(components hooks services store types constants utils)
-
-mkdir -p "$FEATURE_PATH"
-for SUB in "${SUBFOLDERS[@]}"; do
-  mkdir -p "$FEATURE_PATH/$SUB"
-done
-
-# Create api folder inside hooks
-mkdir -p "$FEATURE_PATH/hooks/api"
-
-# Main index barrel
-cat > "$FEATURE_PATH/index.ts" <<EOF
+write_root_index() {
+	cat >"$feature/index.ts" <<EOF_TS
 export * from "./components";
 export * from "./constants";
 export * from "./hooks";
@@ -41,86 +27,58 @@ export * from "./services";
 export * from "./store";
 export * from "./types";
 export * from "./utils";
-export { Component as ${ELEMENT^}Page } from "./${ELEMENT}.page";
-export { default as ${ELEMENT^}Main } from "./main";
-EOF
+export { Component as ${cap}Page } from "./${name}.page";
+export { default as ${cap}Main } from "./main";
+EOF_TS
+}
 
-# Components barrel
-cat > "$FEATURE_PATH/components/index.ts" <<EOF
-EOF
+write_barrels() {
+	: >"$feature/components/index.ts"
 
-# Hooks barrel
-cat > "$FEATURE_PATH/hooks/index.ts" <<EOF
-export { default as use${ELEMENT^} } from "./use-${ELEMENT}";
+	cat >"$feature/hooks/index.ts" <<EOF_TS
+export { default as use${cap} } from "./use-${name}";
 export * from "./api";
-EOF
+EOF_TS
 
-# Hooks API barrel
-cat > "$FEATURE_PATH/hooks/api/index.ts" <<EOF
-export { default as ${ELEMENT}Api } from "./${ELEMENT}.api";
-EOF
+	printf 'export { default as %sApi } from "./%s.api";\n' "$name" "$name" >"$feature/hooks/api/index.ts"
+	printf 'export { default as %sService } from "./%s.service";\n' "$name" "$name" >"$feature/services/index.ts"
+	printf 'export { default as use%sStore } from "./%s.store";\n' "$cap" "$name" >"$feature/store/index.ts"
+	printf 'export type { %s } from "./%s.types";\n' "$cap" "$name" >"$feature/types/index.ts"
+	printf 'export { %s_CONSTANTS } from "./%s.constants";\n' "$upper" "$name" >"$feature/constants/index.ts"
+	printf 'export { %sUtils } from "./%s.utils";\n' "$name" "$name" >"$feature/utils/index.ts"
+}
 
-# Services barrel
-cat > "$FEATURE_PATH/services/index.ts" <<EOF
-export { default as ${ELEMENT}Service } from "./${ELEMENT}.service";
-EOF
+write_placeholders() {
+	touch \
+		"$feature/types/$name.types.ts" \
+		"$feature/constants/$name.constants.ts" \
+		"$feature/hooks/api/$name.api.ts" \
+		"$feature/services/$name.service.ts" \
+		"$feature/store/$name.store.ts" \
+		"$feature/hooks/use-$name.ts" \
+		"$feature/utils/$name.utils.ts"
+}
 
-# Store barrel
-cat > "$FEATURE_PATH/store/index.ts" <<EOF
-export { default as use${ELEMENT^}Store } from "./${ELEMENT}.store";
-EOF
-
-# Types barrel
-cat > "$FEATURE_PATH/types/index.ts" <<EOF
-export type { ${ELEMENT^} } from "./${ELEMENT}.types";
-EOF
-
-# Constants barrel
-cat > "$FEATURE_PATH/constants/index.ts" <<EOF
-export { ${ELEMENT^^}_CONSTANTS } from "./${ELEMENT}.constants";
-EOF
-
-# Utils barrel
-cat > "$FEATURE_PATH/utils/index.ts" <<EOF
-export { ${ELEMENT}Utils } from "./${ELEMENT}.utils";
-EOF
-
-# Create empty files with proper extensions
-touch "$FEATURE_PATH/types/${ELEMENT}.types.ts"
-touch "$FEATURE_PATH/constants/${ELEMENT}.constants.ts"
-touch "$FEATURE_PATH/hooks/api/${ELEMENT}.api.ts"
-touch "$FEATURE_PATH/services/${ELEMENT}.service.ts"
-touch "$FEATURE_PATH/store/${ELEMENT}.store.ts"
-touch "$FEATURE_PATH/hooks/use-${ELEMENT}.ts"
-touch "$FEATURE_PATH/utils/${ELEMENT}.utils.ts"
-
-# Main component
-cat > "$FEATURE_PATH/main.tsx" <<EOF
-const Main = () => (
-  <div>
-    <h1>${ELEMENT^} Feature Main</h1>
-  </div>
-);
+write_components() {
+	cat >"$feature/main.tsx" <<EOF_TSX
+const Main = () => <div><h1>${cap} Feature Main</h1></div>;
 
 export default Main;
-EOF
+EOF_TSX
 
-# Feature page
-cat > "$FEATURE_PATH/${ELEMENT}.page.tsx" <<EOF
+	cat >"$feature/$name.page.tsx" <<EOF_TSX
 import Main from "./main";
 
-const ${ELEMENT^}Page = () => {
-  return (
-    <div>
-      <Main />
-    </div>
-  );
-};
+const ${cap}Page = () => <Main />;
 
-export const Component = ${ELEMENT^}Page;
-EOF
+export const Component = ${cap}Page;
+EOF_TSX
+}
 
-echo "✅ Feature '${ELEMENT}' created successfully at ${FEATURE_PATH}"
-echo "📁 Created folders: ${SUBFOLDERS[*]}"
-echo "📄 API folder created at hooks/api/"
-echo "📄 Created all barrel exports and empty TypeScript files"
+create_directories
+write_root_index
+write_barrels
+write_placeholders
+write_components
+
+ok "created: $feature"

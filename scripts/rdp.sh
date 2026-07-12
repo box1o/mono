@@ -1,114 +1,99 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Load config from ~/.config/rdp/rdp.conf
-CONFIG_FILE="$HOME/.config/rdp/rdp.conf"
-if [[ ! -f "$CONFIG_FILE" ]]; then
-  echo "ERROR: Config file not found: $CONFIG_FILE"
-  echo "Create it with your credentials:"
-  echo "  SSH_HOST, RDP_USER, RDP_PASSWORD, VM_IP_1, VM_IP_2, VM_IP_3"
-  exit 1
-fi
-source "$CONFIG_FILE"
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/shared.inc"
 
-SHARED_DIR="$HOME/work"
-SHARED_NAME="work"
-
-declare -A VM_IPS=(
-  [1]="$VM_IP_1"
-  [2]="$VM_IP_2"
-  [3]="$VM_IP_3"
-)
-
-declare -A VM_NAMES=(
-  [1]="Beast-WIN11"
-  [2]="Beast-WIN11-3"
-  [3]="Beast-WIN11-4"
-)
+load_config rdp
 
 usage() {
-  echo "Usage: rdp <machine>"
-  echo
-  echo "Available machines:"
-  echo "  1  Beast-WIN11"
-  echo "  2  Beast-WIN11-3"
-  echo "  3  Beast-WIN11-4"
+	printf 'Usage: %s <machine>\n' "$0"
+	printf 'Machines: %s\n' "${RDP_MACHINES:-1 2 3}"
 }
 
-find_freerdp_client() {
-  for cmd in xfreerdp3 xfreerdp wlfreerdp sdl-freerdp; do
-    if command -v "$cmd" >/dev/null 2>&1; then
-      echo "$cmd"
-      return 0
-    fi
-  done
-  return 1
+freerdp_client() {
+	need_any_cmd xfreerdp3 xfreerdp wlfreerdp sdl-freerdp
 }
 
-ensure_password_file() {
-  # Password is now sourced from ~/.config/rdp/rdp.conf
-  # No need to create separate password file
-  if [[ -z "$RDP_PASSWORD" ]]; then
-    echo "ERROR: RDP_PASSWORD not set in config file: $CONFIG_FILE"
-    exit 1
-  fi
+require_machine_config() {
+	local vm="$1"
+	local var_ip="RDP_VM_${vm}_IP"
+	local remote="${!var_ip:-}"
+
+	[[ -n "${SSH_HOST:-}" ]] || die "SSH_HOST is missing"
+	[[ -n "${RDP_USER:-}" ]] || die "RDP_USER is missing"
+	[[ -n "${RDP_PASSWORD:-}" ]] || die "RDP_PASSWORD is missing"
+	[[ -n "$remote" ]] || die "missing RDP config for machine $vm"
 }
 
-if [[ $# -ne 1 ]]; then
-  usage
-  exit 1
-fi
+machine_ip() {
+	local var="RDP_VM_${1}_IP"
+	printf '%s\n' "${!var}"
+}
 
-VM="$1"
+machine_name() {
+	local vm="$1"
+	local var="RDP_VM_${vm}_NAME"
+	printf '%s\n' "${!var:-vm-$vm}"
+}
 
-if [[ -z "${VM_IPS[$VM]:-}" ]]; then
-  echo "Unknown or disabled machine: $VM"
-  echo
-  usage
-  exit 1
-fi
+stop_existing_tunnel() {
+	local port="$1"
+	local pids
 
-ensure_password_file
+	pids="$(pgrep -f "ssh .*127.0.0.1:${port}:" || true)"
+	kill_pids "$pids"
 
-RDP_CLIENT="$(find_freerdp_client || true)"
+	[[ -n "$pids" ]] && sleep 1
+	return 0
+}
 
-if [[ -z "$RDP_CLIENT" ]]; then
-  echo "FreeRDP client not found."
-  echo "Install it with:"
-  echo "  sudo apt install freerdp3-x11"
-  exit 1
-fi
+start_tunnel() {
+	local port="$1"
+	local remote="$2"
 
-REMOTE_IP="${VM_IPS[$VM]}"
-VM_NAME="${VM_NAMES[$VM]}"
-LOCAL_PORT="339${VM}"
+	log "Starting SSH tunnel 127.0.0.1:${port} -> ${remote}:3389 via ${SSH_HOST}"
+	ssh -fnNT -o ExitOnForwardFailure=yes -L "127.0.0.1:${port}:${remote}:3389" "$SSH_HOST"
+}
 
-echo "Selected $VM_NAME"
-echo "Remote: $REMOTE_IP:3389"
-echo "Local:  127.0.0.1:$LOCAL_PORT"
-echo "Client: $RDP_CLIENT"
+open_rdp() {
+	local client="$1"
+	local port="$2"
+	local shared_dir="${RDP_SHARED_DIR:-$HOME/work}"
+	local shared_name="${RDP_SHARED_NAME:-work}"
 
-STALE_PIDS="$(pgrep -f "ssh .*127.0.0.1:${LOCAL_PORT}:" || true)"
+	"$client" \
+		/v:127.0.0.1:"$port" \
+		/u:"$RDP_USER" \
+		/p:"$RDP_PASSWORD" \
+		/w:"${RDP_WIDTH:-1920}" \
+		/h:"${RDP_HEIGHT:-1440}" \
+		/drive:"$shared_name","$shared_dir" \
+		+clipboard \
+		+fonts
+}
 
-if [[ -n "$STALE_PIDS" ]]; then
-  echo "Killing stale tunnel on 127.0.0.1:$LOCAL_PORT"
-  kill $STALE_PIDS || true
-  sleep 1
-fi
+main() {
+	local vm="${1:-}"
+	local client remote name port
 
-echo "Creating tunnel for $VM_NAME..."
-ssh -fnNT \
-  -L "127.0.0.1:${LOCAL_PORT}:${REMOTE_IP}:3389" \
-  "$SSH_HOST"
+	[[ $# -eq 1 ]] || {
+		usage
+		exit 1
+	}
 
-echo "Launching RDP for $VM_NAME on 127.0.0.1:$LOCAL_PORT"
+	require_machine_config "$vm"
 
-"$RDP_CLIENT" \
-  /v:127.0.0.1:"$LOCAL_PORT" \
-  /u:"$RDP_USER" \
-  /p:"$RDP_PASSWORD" \
-  /w:1920 \
-  /h:1440 \
-  /drive:"$SHARED_NAME","$SHARED_DIR" \
-  +clipboard \
-  +fonts
+	client="$(freerdp_client)"
+	remote="$(machine_ip "$vm")"
+	name="$(machine_name "$vm")"
+	port="${RDP_LOCAL_PORT_PREFIX:-339}$vm"
+
+	stop_existing_tunnel "$port"
+	start_tunnel "$port" "$remote"
+
+	log "RDP $name on 127.0.0.1:$port"
+	log "Opening $client"
+	open_rdp "$client" "$port"
+}
+
+main "$@"

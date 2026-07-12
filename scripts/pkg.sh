@@ -1,256 +1,201 @@
 #!/usr/bin/env bash
-# Manage packages using Pacman (Arch) and Yay (AUR) repositories.
+set -euo pipefail
 
-set -o errexit
-set -o pipefail
-set -o nounset
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/shared.inc"
 
-if [ -r /etc/os-release ]; then
-  # shellcheck disable=SC1091
-  OS_DISTRO="$(. /etc/os-release && echo "${ID_LIKE:-${ID}}")"
-  if [ "${OS_DISTRO}" != "arch" ]; then
-    echo "This script is only available on Arch Linux, sorry!" >&2
-    exit 1
-  fi
-fi
+load_config pkg
+need_cmd fzf
 
-POSITION=0
-CMD=
-AUR=
+CMD=""
+AUR=false
+
+ensure_arch() {
+	if [[ ! -r /etc/os-release ]]; then
+		return 0
+	fi
+
+	source /etc/os-release
+
+	if [[ "${ID_LIKE:-$ID}" != *arch* && "${ID:-}" != arch ]]; then
+		die "pkg supports Arch-based systems only"
+	fi
+}
 
 usage() {
-  cat <<EOF
-Usage examples:
-
-  pkg CMD [-a|--aur]
-
-  pkg install          # Install / search new packages
-  ^ pacman -Syu --needed
-
-  pkg install --aur    # Install / search new AUR packages
-  ^ yay -S --answerclean N --needed
-
-  pkg list             # List locally installed packages
-  ^ pacman -Qei
-
-  pkg list --aur       # List locally installed AUR packages
-  ^ yay -Qm
-
-  pkg remove           # Remove installed packages
-  ^ pacman -Rns
-
-  pkg remove --aur     # Remove installed AUR packages
-  ^ pacman -Rns
-EOF
+	printf 'Usage: %s {install|list|remove} [--aur]\n' "$0"
 }
 
-while [[ "${#}" -gt 0 ]]; do
-  case "${1}" in
-  -h | --help | help)
-    usage
-    exit 0
-    ;;
-  -a | --aur)
-    AUR="true"
-    shift
-    ;;
-  *)
-    case "${POSITION}" in
-    0)
-      CMD="${1}"
-      POSITION=1
-      shift
-      ;;
-    1)
-      printf "Unknown argument: %s\n\n" "${1}" >&2
-      usage >&2
-      exit 1
-      ;;
-    esac
-    ;;
-  esac
-done
+parse_args() {
+	while (($# > 0)); do
+		case "$1" in
+		-a | --aur)
+			AUR=true
+			;;
+		-h | --help | help)
+			usage
+			exit 0
+			;;
+		*)
+			if [[ -n "$CMD" ]]; then
+				die "unknown argument: $1"
+			fi
 
-[[ -z "${CMD}" ]] && usage >&2 && exit 1
+			CMD="$1"
+			;;
+		esac
+
+		shift
+	done
+
+	[[ -n "$CMD" ]] || die "missing command"
+}
 
 fzf_args() {
-  local prompt="${1}"
-  local preview="${2}"
-  local tiebreak="${3:-}"
+	local prompt="$1"
+	local preview="$2"
 
-  local args=(
-    --multi
-    --prompt "${prompt} "
-    --delimiter "::"
-    --preview "${preview}"
-    --preview-window "down:55%:wrap"
-    --preview-label-pos "bottom"
-    --preview-label " tab: multi-select, /: search, enter: confirm "
-  )
-
-  [ -n "${tiebreak}" ] && args+=(--nth "1,2" --tiebreak "begin,index")
-
-  printf "%s\n" "${args[@]}"
+	printf '%s\n' \
+		--multi \
+		--prompt "$prompt " \
+		--delimiter '::' \
+		--preview "$preview" \
+		--preview-window 'down:55%:wrap' \
+		--preview-label ' tab: multi-select, /: search, enter: confirm '
 }
 
-install() {
-  local packages=
+select_pacman_packages() {
+	local prompt="$1"
+	local opts
 
-  mapfile -t fzf_opts \
-    < <(fzf_args "Search packages to install..." 'pacman -Si $(echo {} | cut -d " " -f 1)' "tiebreak")
+	mapfile -t opts < <(fzf_args "$prompt" 'pacman -Si $(echo {} | cut -d " " -f 1)')
 
-  packages="$(
-    pacman -Ss "" | awk '
-    /^[a-z]+\/[^\s]+/ {
-      split($1,a,"/")
-      pkg = a[2]
-      getline desc
-      sub(/^[ \t]+/, "", desc)
-      printf "%s :: %s\n", pkg, desc
-    }' |
-      fzf "${fzf_opts[@]}" | cut -d " " -f 1
-  )"
-
-  if [ -n "${packages}" ]; then
-    sudo pacman -Syu --needed ${packages}
-  fi
+	pacman -Ss "" |
+		awk '
+			/^[a-z]+\/[^[:space:]]+/ {
+				split($1, repo, "/")
+				pkg = repo[2]
+				getline desc
+				sub(/^[ \t]+/, "", desc)
+				printf "%s :: %s\n", pkg, desc
+			}
+		' |
+		fzf "${opts[@]}" |
+		cut -d ' ' -f 1
 }
 
-install_aur() {
-  local packages=
-  local query
+select_installed_packages() {
+	local prompt="$1"
+	local opts
 
-  read -rp "Enter AUR search query (at least 3 characters): " query
+	mapfile -t opts < <(fzf_args "$prompt" 'pacman -Qi $(echo {} | cut -d " " -f 1)')
 
-  if [[ ${#query} -lt 3 ]]; then
-    echo "'${query}' must be 3 or more characters, aborting!" >&2
-    exit 1
-  fi
-
-  mapfile -t fzf_opts \
-    < <(fzf_args "Filter AUR packages to install..." 'yay -Si $(echo {} | cut -d " " -f 1)' "tiebreak")
-
-  packages="$(
-    yay -Ssa "$query" | awk '
-      /^[^ ]/ {
-        split($1, a, "/")
-        pkg = a[2]
-        next
-      }
-      /^[ ]/ {
-        desc = $0
-        sub(/^[ \t]+/, "", desc)
-        printf "%s :: %s\n", pkg, desc
-      }
-    ' |
-      fzf "${fzf_opts[@]}" | cut -d " " -f 1
-  )"
-
-  if [ -n "${packages}" ]; then
-    yay -S --answerclean N --needed ${packages}
-  fi
+	pacman -Qei |
+		awk '
+			BEGIN { name = ""; desc = "" }
+			/^Name[[:space:]]*:/ { name = $3 }
+			/^Description[[:space:]]*:/ { desc = substr($0, index($0, $3)) }
+			/^$/ && name && desc {
+				printf "%s :: %s\n", name, desc
+				name = ""
+				desc = ""
+			}
+		' |
+		fzf "${opts[@]}" |
+		cut -d ' ' -f 1
 }
 
-list() {
-  mapfile -t fzf_opts \
-    < <(fzf_args "Search installed packages..." 'pacman -Qi $(echo {} | cut -d " " -f 1)' "tiebreak")
+select_aur_packages() {
+	local prompt="$1"
+	local query opts
 
-  pacman -Qei | awk '
-    BEGIN { name = ""; desc = "" }
-    /^Name\s*:/ { name = $3 }
-    /^Description\s*:/ { desc = substr($0, index($0,$3)) }
-    /^$/ && name != "" && desc != "" {
-      printf "%s :: %s\n", name, desc
-      name = ""; desc = ""
-    }' | fzf "${fzf_opts[@]}" >/dev/null
+	need_cmd yay
+
+	read -r -p 'AUR query: ' query
+	[[ ${#query} -ge 3 ]] || die "query too short"
+
+	mapfile -t opts < <(fzf_args "$prompt" 'yay -Si $(echo {} | cut -d " " -f 1)')
+
+	yay -Ssa "$query" |
+		awk '
+			/^[^ ]/ {
+				split($1, repo, "/")
+				pkg = repo[2]
+				next
+			}
+			/^[ ]/ {
+				desc = $0
+				sub(/^[ \t]+/, "", desc)
+				printf "%s :: %s\n", pkg, desc
+			}
+		' |
+		fzf "${opts[@]}" |
+		cut -d ' ' -f 1
 }
 
-list_aur() {
-  mapfile -t fzf_opts \
-    < <(fzf_args "Search installed AUR packages..." 'yay -Qi $(echo {} | cut -d" " -f1)' "tiebreak")
+select_installed_aur_packages() {
+	local prompt="$1"
+	local opts
 
-  yay -Qm | awk '
-    {
-      pkg = $1
-      cmd = "yay -Qi " pkg " 2>/dev/null | grep -m1 \"^Description\""
-      desc = ""
-      if ((cmd | getline line) > 0) {
-        sub(/^[^:]*:\s*/, "", line)
-        desc = line
-      }
-      close(cmd)
-      printf "%s :: %s\n", pkg, desc
-    }' | fzf "${fzf_opts[@]}" >/dev/null
+	need_cmd yay
+
+	mapfile -t opts < <(fzf_args "$prompt" 'yay -Qi $(echo {} | cut -d " " -f 1)')
+
+	yay -Qm |
+		awk '{ print $1 " :: AUR package" }' |
+		fzf "${opts[@]}" |
+		cut -d ' ' -f 1
 }
 
-remove() {
-  local packages=
+install_packages() {
+	local packages
 
-  mapfile -t fzf_opts \
-    < <(fzf_args "Search installed packages to remove..." 'pacman -Qi $(echo {} | cut -d " " -f 1)' "tiebreak")
-
-  packages="$(
-    pacman -Qei | awk '
-    BEGIN { name = ""; desc = "" }
-    /^Name\s*:/ { name = $3 }
-    /^Description\s*:/ { desc = substr($0, index($0,$3)) }
-    /^$/ && name != "" && desc != "" {
-      printf "%s :: %s\n", name, desc
-      name = ""; desc = ""
-    }' | fzf "${fzf_opts[@]}" | cut -d " " -f 1
-  )"
-
-  if [ -n "${packages}" ]; then
-    sudo pacman -Rns ${packages}
-  fi
+	if $AUR; then
+		packages="$(select_aur_packages 'Filter AUR packages to install...')"
+		[[ -n "$packages" ]] && yay -S --answerclean N --needed $packages
+	else
+		packages="$(select_pacman_packages 'Search packages to install...')"
+		[[ -n "$packages" ]] && sudo pacman -Syu --needed $packages
+	fi
 }
 
-remove_aur() {
-  local packages=
-
-  mapfile -t fzf_opts \
-    < <(fzf_args "Search installed AUR packages to remove..." 'yay -Qi $(echo {} | cut -d " " -f 1)' "tiebreak")
-
-  packages="$(
-    yay -Qm | awk '
-    {
-      pkg = $1
-      cmd = "yay -Qi " pkg " 2>/dev/null | grep -m1 \"^Description\""
-      desc = ""
-      if ((cmd | getline line) > 0) {
-        sub(/^[^:]*:\s*/, "", line)
-        desc = line
-      }
-      close(cmd)
-      printf "%s :: %s\n", pkg, desc
-    }' | fzf "${fzf_opts[@]}" | cut -d " " -f 1
-  )"
-
-  if [ -n "${packages}" ]; then
-    sudo pacman -Rns ${packages}
-  fi
+list_packages() {
+	if $AUR; then
+		select_installed_aur_packages 'Search installed AUR packages...' >/dev/null
+	else
+		select_installed_packages 'Search installed packages...' >/dev/null
+	fi
 }
 
-if [[ "${CMD}" = "install" && -z "${AUR}" ]]; then
-  install
-elif [[ "${CMD}" = "install" && -n "${AUR}" ]]; then
-  install_aur
-elif [[ "${CMD}" = "list" && -z "${AUR}" ]]; then
-  list
-elif [[ "${CMD}" = "list" && -n "${AUR}" ]]; then
-  list_aur
-elif [[ "${CMD}" = "remove" && -z "${AUR}" ]]; then
-  remove
-elif [[ "${CMD}" = "remove" && -n "${AUR}" ]]; then
-  remove_aur
-else
-  printf "Unknown command: %s\n\n" "${CMD}" >&2
-  usage >&2
-  exit 1
-fi
+remove_packages() {
+	local packages
 
+	if $AUR; then
+		packages="$(select_installed_aur_packages 'Search installed AUR packages to remove...')"
+	else
+		packages="$(select_installed_packages 'Search installed packages to remove...')"
+	fi
 
+	[[ -n "$packages" ]] && sudo pacman -Rns $packages
+}
 
+main() {
+	parse_args "$@"
+	ensure_arch
 
-alias cc = ""
+	case "$CMD" in
+	install)
+		install_packages
+		;;
+	list)
+		list_packages
+		;;
+	remove)
+		remove_packages
+		;;
+	*)
+		die "unknown command: $CMD"
+		;;
+	esac
+}
 
+main "$@"

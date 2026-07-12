@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Shortcut Probe
+Comment=Test global shortcut portal event delivery
+Exec=/home/pixel/.local/share/bin/shortcut-probe
+Terminal=true
+NoDisplay=true
+Categories=Development;

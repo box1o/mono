@@ -16,11 +16,11 @@
 window {
     location: center;
     anchor: center;
-    width: 74%;
-    height: 29em;
+    width: 88%;
+    height: 38em;
     padding: 0;
     border: 1px;
-    border-radius: 10px;
+    border-radius: 12px;
     border-color: @line;
     background-color: @bg;
 }
@@ -35,57 +35,30 @@ mainbox {
 
 inputbar {
     enabled: false;
-    children: [ "prompt", "entry" ];
-    spacing: 0.8em;
-    padding: 1em 1.2em;
-    border: 0 0 1px 0;
-    border-color: @line;
-    background-color: @bg-soft;
-}
-
-prompt {
-    enabled: false;
-    padding: 0.25em 0;
-    text-color: @accent;
-}
-
-entry {
-    enabled: false;
-    placeholder: "search";
-    placeholder-color: @muted;
-    cursor-color: @accent;
-    text-color: @fg;
-    background-color: transparent;
 }
 
 listview {
-    columns: 2;
-    lines: 1;
-    spacing: 0.8em;
-    padding: 0.8em;
+    columns: 3;
+    lines: 3;
+    spacing: 0.65em;
+    padding: 0.65em;
     cycle: true;
     dynamic: true;
     fixed-height: true;
     fixed-columns: true;
-    scrollbar: false;
+    scrollbar: true;
     background-color: transparent;
 }
 
 element {
     orientation: vertical;
-    children: [ "element-icon" ];
-    spacing: 0;
-    padding: 0.35em;
+    children: [ "element-icon", "element-text" ];
+    spacing: 0.25em;
+    padding: 0.3em;
     border: 1px;
     border-radius: 8px;
     border-color: transparent;
-    background-color: transparent;
-    text-color: @fg;
-}
-
-element normal active,
-element alternate active {
-    background-color: transparent;
+    background-color: @bg-soft;
     text-color: @fg;
 }
 
@@ -96,30 +69,18 @@ element selected {
 }
 
 element-icon {
-    size: 26.5em;
+    size: 15em;
     horizontal-align: 0.5;
     vertical-align: 0.5;
     border-radius: 6px;
-    background-color: @bg-soft;
-}
-
-element-text {
-    enabled: false;
-    horizontal-align: 0.5;
-    vertical-align: 0.5;
-    font: "Adwaita Sans 9";
-    text-color: inherit;
     background-color: transparent;
 }
 
-message {
-    padding: 1em;
-    border: 1px 0 0 0;
-    border-color: @line;
-    background-color: @bg-soft;
-}
-
-textbox {
+element-text {
+    enabled: true;
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+    font: "Adwaita Sans 10";
     text-color: @fg;
     background-color: transparent;
 }

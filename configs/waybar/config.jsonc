@@ -3,11 +3,32 @@
   "position": "top",
   "height": 16,
   "spacing": 0,
-
-  "modules-left": ["hyprland/workspaces"],
-  "modules-center": ["hyprland/window"],
-  "modules-right": ["tray", "privacy", "custom/dunst", "custom/media", "custom/dcmd", "custom/bt-profile", "power-profiles-daemon", "backlight", "pulseaudio", "pulseaudio#microphone", "network", "battery", "clock"],
-
+  "modules-left": [
+    "custom/pad-left",
+    "hyprland/workspaces"
+  ],
+  "modules-center": [
+    "hyprland/window"
+  ],
+  "modules-right": [
+    "custom/pad-right",
+    "tray",
+    "privacy",
+    "custom/dunst",
+    "custom/media",
+    "custom/dcmd",
+    "custom/runnit",
+    "custom/scrcpy",
+    "custom/idle",
+    "custom/bt-profile",
+    "power-profiles-daemon",
+    "backlight",
+    "pulseaudio",
+    "pulseaudio#microphone",
+    "network",
+    "battery",
+    "clock"
+  ],
   "hyprland/workspaces": {
     "format": "{name}",
     "disable-scroll": true,
@@ -26,13 +47,11 @@
       "9": []
     }
   },
-
   "hyprland/window": {
     "format": "{}",
     "max-length": 76,
     "separate-outputs": true
   },
-
   "clock": {
     "format": "{:%H:%M}",
     "format-alt": "{:%Y-%m-%d}",
@@ -43,64 +62,74 @@
       "on-scroll": 1
     }
   },
-
   "battery": {
     "states": {
       "warning": 30,
       "critical": 15
     },
     "format": "{icon} {capacity}%",
-    "format-charging": "󰂄 {capacity}%",
-    "format-plugged": "󱘖 {capacity}%",
+    "format-charging": "\udb80\udc84 {capacity}%",
+    "format-plugged": "\udb85\ude16 {capacity}%",
     "on-click": "mission-center",
-    "format-icons": ["󰂎", "󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
+    "format-icons": [
+      "\udb80\udc8e",
+      "\udb80\udc7a",
+      "\udb80\udc7b",
+      "\udb80\udc7c",
+      "\udb80\udc7d",
+      "\udb80\udc7e",
+      "\udb80\udc7f",
+      "\udb80\udc80",
+      "\udb80\udc81",
+      "\udb80\udc82",
+      "\udb80\udc79"
+    ]
   },
-
   "network": {
-    "format-wifi": "󰖩 {essid}",
-    "format-ethernet": "󰈀 wired",
-    "format-linked": "󰈀 {ifname}",
-    "format-disconnected": "󰖪 offline",
+    "format-wifi": "\udb81\udda9 {essid}",
+    "format-ethernet": "\udb80\ude00 wired",
+    "format-linked": "\udb80\ude00 {ifname}",
+    "format-disconnected": "\udb81\uddaa offline",
     "on-click": "nm-connection-editor",
     "on-click-right": "kitty -e nmtui",
     "tooltip-format": "Interface: {ifname}\nIP: {ipaddr}\nGateway: {gwaddr}"
   },
-
   "pulseaudio": {
     "format": "{icon} {volume}%",
-    "format-bluetooth": "󰂯 {volume}%",
-    "format-bluetooth-muted": "󰂲 muted",
-    "format-muted": "󰖁 muted",
+    "format-bluetooth": "\udb80\udcaf {volume}%",
+    "format-bluetooth-muted": "\udb80\udcb2 muted",
+    "format-muted": "\udb81\udd81 muted",
     "format-icons": {
-      "headphone": "󰋋",
-      "hands-free": "󰋎",
-      "headset": "󰋎",
-      "speaker": "󰓃",
-      "default": ["󰕿", "󰖀", "󰕾"]
+      "headphone": "\udb80\udecb",
+      "hands-free": "\udb80\udece",
+      "headset": "\udb80\udece",
+      "speaker": "\udb81\udcc3",
+      "default": [
+        "\udb81\udd7f",
+        "\udb81\udd80",
+        "\udb81\udd7e"
+      ]
     },
     "on-click": "pavucontrol"
   },
-
   "pulseaudio#microphone": {
     "format": "{format_source}",
-    "format-source": "󰍬 {volume}%",
-    "format-source-muted": "󰍭 muted",
+    "format-source": "\udb80\udf6c {volume}%",
+    "format-source-muted": "\udb80\udf6d muted",
     "on-click": "pavucontrol -t 4",
     "tooltip-format": "Input: {desc}\nVolume: {volume}%"
   },
-
   "power-profiles-daemon": {
     "format": "{icon}",
     "tooltip-format": "Power profile: {profile}\nDriver: {driver}",
     "format-icons": {
-      "performance": "󰓅",
-      "balanced": "󰾅",
-      "power-saver": "󰌪",
-      "default": "󰾅"
+      "performance": "\udb81\udcc5",
+      "balanced": "\udb83\udf85",
+      "power-saver": "\udb80\udf2a",
+      "default": "\udb83\udf85"
     },
     "on-click": "~/.local/share/bin/power-profile.sh"
   },
-
   "privacy": {
     "icon-spacing": 5,
     "icon-size": 10,
@@ -124,24 +153,40 @@
     ],
     "ignore-monitor": true
   },
-
   "custom/dcmd": {
-    "format": "󰘳",
+    "format": "\udb81\ude33",
     "tooltip": true,
     "tooltip-format": "dcmd",
     "on-click": "kitty --title dcmd -e ~/.local/share/bin/dcmd"
   },
-
-  "custom/bt-profile": {
-    "exec": "~/.config/waybar/scripts/bt-profile.sh",
+  "custom/runnit": {
+    "format": "󰜎",
+    "tooltip": true,
+    "tooltip-format": "Runnit",
+    "on-click": "~/.local/share/bin/runnit"
+  },
+  "custom/scrcpy": {
+    "format": "\uf10b",
+    "tooltip": true,
+    "tooltip-format": "scrcpy",
+    "on-click": "~/.local/share/bin/scrcpy-once.sh"
+  },
+  "custom/idle": {
+    "exec": "~/.local/share/bin/waybar-idle.sh",
     "return-type": "json",
     "interval": 2,
     "tooltip": true,
-    "on-click": "~/.config/waybar/scripts/bt-profile.sh toggle"
+    "on-click": "~/.local/share/bin/waybar-idle.sh toggle"
   },
-
+  "custom/bt-profile": {
+    "exec": "~/.local/share/bin/waybar-bt-profile.sh",
+    "return-type": "json",
+    "interval": 2,
+    "tooltip": true,
+    "on-click": "~/.local/share/bin/waybar-bt-profile.sh toggle"
+  },
   "custom/dunst": {
-    "exec": "dunstctl is-paused | grep -q true && echo '󰂛' || echo '󰂚'",
+    "exec": "dunstctl is-paused | grep -q true && echo '\udb80\udc9b' || echo '\udb80\udc9a'",
     "interval": 2,
     "return-type": "text",
     "tooltip": true,
@@ -149,9 +194,8 @@
     "on-click": "dunstctl set-paused toggle",
     "on-click-right": "dunstctl history-pop"
   },
-
   "custom/media": {
-    "exec": "~/.config/waybar/scripts/media.sh",
+    "exec": "~/.local/share/bin/waybar-media.sh",
     "interval": 2,
     "return-type": "text",
     "max-length": 36,
@@ -161,14 +205,16 @@
     "on-scroll-down": "playerctl previous",
     "tooltip": true
   },
-
   "backlight": {
     "format": "{icon} {percent}%",
-    "format-icons": ["󰃞", "󰃟", "󰃠"],
+    "format-icons": [
+      "\udb80\udcde",
+      "\udb80\udcdf",
+      "\udb80\udce0"
+    ],
     "on-scroll-up": "brightnessctl set 1%+",
     "on-scroll-down": "brightnessctl set 1%-"
   },
-
   "tray": {
     "icon-size": 10,
     "spacing": 7,
@@ -177,5 +223,11 @@
       "blueman": "bluetooth",
       "nm-applet": "network-wireless"
     }
+  },
+  "custom/pad-left": {
+    "format": "  "
+  },
+  "custom/pad-right": {
+    "format": "  "
   }
 }

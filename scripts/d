@@ -1,330 +1,162 @@
 #!/usr/bin/env bash
-# GBashLib-compatible runner for ./d.bl.sh (gblcmd_* commands).
+set -euo pipefail
 
-set -eo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-D_SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-D_BL_SH_DIR=""
-D_BL_SH_FILE=""
-_NAME=d
-_ALLCMDS=()
+source "$SCRIPT_DIR/lib/shared.inc"
+
+D_FILE=""
+D_DIR=""
 
 gbl() {
 	case "${1:-}" in
-	log) printf '%s\n' "$D_SCRIPT_DIR/d-log.lib.sh" ;;
-	d_lib)
-		case "${2:-}" in
-		docs | "") printf '%s\n' "$D_SCRIPT_DIR/d-stub.lib.sh" ;;
-		*) return 1 ;;
-		esac
+	log)
+		printf '%s\n' "$SCRIPT_DIR/d-log.lib.sh"
 		;;
-	*) return 1 ;;
+	d_lib)
+		printf '%s\n' "$SCRIPT_DIR/d-stub.lib.sh"
+		;;
+	*)
+		return 1
+		;;
 	esac
 }
 
-_d_fatal() {
-	echo -e "FATAL:\t $*\n\n---try help command for more information: d help\n" >&2
-	exit 1
+resolve_dfile() {
+	if [[ ! -f ./d.bl.sh && ! -d ./d.bl.sh ]]; then
+		die "there is no ./d.bl.sh to run in this directory"
+	fi
+
+	if [[ -d ./d.bl.sh ]]; then
+		D_DIR="$(cd ./d.bl.sh && pwd)"
+		D_FILE="$D_DIR"
+	else
+		D_DIR="$PWD"
+		D_FILE="$PWD/d.bl.sh"
+	fi
 }
 
-_d_err() {
-	echo -e "ERROR:\t $*" >&2
+load_dfile() {
+	local file
+
+	resolve_dfile
+
+	if [[ -d "$D_FILE" ]]; then
+		for file in "$D_FILE"/*.bl.sh; do
+			[[ -f "$file" ]] && source "$file"
+		done
+	else
+		source "$D_FILE"
+	fi
 }
 
-_d_usage() {
-	local name descr args var var_args cmds_text=''
-
-	echo "Usage:"
-	echo "d [OPTIONS] command1 arg1 arg2 -- command2 arg1 arg2 -- ..."
-	echo ""
-	echo "COMMANDS:"
-	mapfile -t _ALLCMDS < <(_d_list_commands_raw)
-	for name in "${_ALLCMDS[@]}"; do
-		var="gblcmd_descr_${name}"
-		descr="${!var:-}"
-		var_args="gblcmd_descr_${name}[1]"
-		args="${!var_args:-}"
-		if [[ -z "$args" ]]; then
-			args='-'
-		fi
-		cmds_text+=$'\t'"  $name $args $descr"$'\n'
-	done
-	echo -e "$cmds_text"
-	echo ""
-	echo "AUTOCOMPLETE: eval \"\$( d _print_autocomplete )\""
-}
-
-_d_list_commands_raw() {
+list_commands() {
 	compgen -A function |
-		sed -n 's/^gblcmd_\([^[:space:]]*\)$/\1/p' |
+		sed -n 's/^gblcmd_//p' |
 		grep -Ev '^(descr_|autocomp_)' |
 		sort -u
 }
 
-_d_refresh_commands() {
-	mapfile -t _ALLCMDS < <(_d_list_commands_raw)
-	_ALLCMDS+=("--")
+usage() {
+	local cmd var
+
+	printf 'Usage: d command [args] [-- command args]\n\nCommands:\n'
+
+	while read -r cmd; do
+		var="gblcmd_descr_$cmd"
+		printf '  %-20s %s\n' "$cmd" "${!var:-}"
+	done < <(list_commands)
 }
 
-_d_has_bl() {
-	local dir="${1:-.}"
-	[[ -f "$dir/d.bl.sh" || -d "$dir/d.bl.sh" ]]
-}
-
-_d_resolve_bl() {
-	local dir="${1:-.}"
-
-	if [[ -d "$dir/d.bl.sh" ]]; then
-		D_BL_SH_DIR="$(cd -- "$dir/d.bl.sh" && pwd)"
-		D_BL_SH_FILE="$D_BL_SH_DIR"
-		return 0
-	fi
-
-	if [[ -f "$dir/d.bl.sh" ]]; then
-		D_BL_SH_DIR="$(cd -- "$dir" && pwd)"
-		D_BL_SH_FILE="$D_BL_SH_DIR/d.bl.sh"
-		return 0
-	fi
-
-	return 1
-}
-
-# NOTE: d.bl.sh must be sourced here (top level), not inside a function —
-# declare -A in project scripts is invisible to gblcmd_* otherwise.
-
-gblcmd_descr_zhelp='print help information (this screen)'
-gblcmd_zhelp() {
-	_d_usage
-	echo ""
-	echo "G FUNCTIONS:"
-	local fn descr var
-	while IFS= read -r fn; do
-		[[ "$fn" == gbl_* ]] || continue
-		var="gbl_descr_${fn#gbl_}"
-		descr="${!var:-}"
-		echo -e "\t${fn} : $descr"
-	done < <(compgen -A function | grep -e '^gbl_' || true)
-	echo ""
-}
-_d_print_autocomplete_bash_code() {
-	local scriptpath="$D_SCRIPT_DIR/d"
-	local name="${2:-d}"
-
-	cat <<EOF
-_d_bac_d(){
-local cur=\${COMP_WORDS[COMP_CWORD]}
-local prev=\${COMP_WORDS[COMP_CWORD-1]}
-COMPREPLY=(\$($scriptpath _print_autocomplete_result \$COMP_CWORD \${COMP_WORDS[@]}))
-} ; complete -r ./$name $name >/dev/null 2>&1; complete -F _d_bac_d $name
-EOF
-}
-
-_d_print_autocomplete_result() {
-	local cword="$1"
-	shift
-	shift
-	local -a rez=("${_ALLCMDS[@]}")
-	local filter="" unknown="no"
-	local -a arr=("$@")
-	local i j=0 cmd="" x z
-
-	if (($# == 1)) && (($# == cword)); then
-		filter="$1"
-	else
-		for ((i = 0; i < $#; i++)); do
-			if [[ "${arr[i]}" == "--" ]]; then
-				((j = i + 1))
-				cmd=""
-			fi
-			if ((j == i)); then
-				cmd="${arr[i]}"
-			fi
-		done
-		((z = i - 1))
-		if ((z == j)) && (($# == cword)); then
-			filter="$cmd"
-		else
-			if [[ -n "$cmd" ]]; then
-				((x = i - j))
-				if (($# == cword)); then
-					((--x))
-					((z = $# - 1))
-					filter="${arr[z]}"
-				fi
-				local var_name="gblcmdautocomp_${cmd}_$x"
-				local var_value="${!var_name:-}"
-				if [[ -n "$var_value" ]]; then
-					read -ra rez <<< "$(eval "$var_value")"
-				else
-					var_name="gblcmdautocomp_${cmd}_0"
-					var_value="${!var_name:-}"
-					if [[ -n "$var_value" ]]; then
-						read -ra rez <<< "$(eval "$var_value" "$x")"
-					else
-						unknown="yes"
-					fi
-				fi
-			fi
-		fi
-	fi
-
-	if [[ "$unknown" == "yes" ]]; then
-		read -ra rez <<< "$(ls)"
-	fi
-
-	if [[ -n "$filter" ]]; then
-		if [[ "$unknown" == "yes" ]]; then
-			read -ra rez <<< "$(ls "$(dirname "$filter")" 2>/dev/null || true)"
-			filter="${filter##*/}"
-		fi
-		for i in "${rez[@]}"; do
-			if [[ "$i" =~ $filter ]]; then
-				printf '%s\n' "$i"
-			fi
-		done
-	else
-		printf '%s\n' "${rez[@]}"
-	fi
-}
-
-_d_print_autocomplete() {
-	_d_print_autocomplete_bash_code "$@"
-}
-
-_d_print_zsh_setup() {
-	cat <<'EOF'
+print_zsh_setup() {
+	cat <<'EOF_ZSH'
 _d_zsh() {
-	local -a words_copy reply_arr
-	local cword=$((CURRENT - 1))
-
-	command d _has_bl >/dev/null 2>&1 || {
-		_message -r 'no ./d.bl.sh in this directory'
-		return 1
-	}
-
-	words_copy=("${words[@]}")
-	reply_arr=("${(@f)$(command d _print_autocomplete_result $cword ${words_copy[@]} 2>/dev/null)}")
-	(( ${#reply_arr} )) || return 0
+	local -a reply_arr
+	reply_arr=(${(@f)$(command d _complete ${words[@]} 2>/dev/null)})
 	compadd -- "${reply_arr[@]}"
 }
 
 compdef _d_zsh d
-EOF
+EOF_ZSH
 }
 
-_d_dispatch() {
-	local cmd cmd_args=()
-	local cmd_run_count=0
-	local -a detect=()
-	local i resolved
+complete_words() {
+	load_dfile
+	list_commands
+}
+
+resolve_command() {
+	local cmd="$1"
+	local matches
+
+	if declare -F "gblcmd_$cmd" >/dev/null 2>&1; then
+		printf '%s\n' "$cmd"
+		return 0
+	fi
+
+	mapfile -t matches < <(list_commands | grep "$cmd" || true)
+	((${#matches[@]} == 1)) || die "unknown or ambiguous command: $cmd"
+
+	printf '%s\n' "${matches[0]}"
+}
+
+run_command() {
+	local cmd="$1"
+	shift
+
+	cmd="$(resolve_command "$cmd")"
+	"gblcmd_$cmd" "$@"
+}
+
+dispatch() {
+	local cmd
+	local args
+
+	(($# > 0)) || {
+		usage
+		exit 0
+	}
 
 	while (($# > 0)); do
 		cmd="$1"
-		[[ -z "$cmd" ]] && break
 		shift
-		cmd_args=()
-		i=0
+		args=()
 
 		while (($# > 0)); do
-			[[ -z "$1" ]] && break
-			if [[ "$1" == "--" ]]; then
+			if [[ "$1" == -- ]]; then
 				shift
 				break
 			fi
-			((++i))
-			cmd_args[i]=$1
+
+			args+=("$1")
 			shift
 		done
 
-		if ! declare -F "gblcmd_$cmd" >/dev/null 2>&1; then
-			detect=()
-			for resolved in "${_ALLCMDS[@]}"; do
-				if [[ "$resolved" == "--" ]]; then
-					continue
-				fi
-				if [[ "$resolved" =~ $cmd ]]; then
-					detect+=("$resolved")
-				fi
-			done
-			if ((${#detect[@]} > 0)); then
-				if ((${#detect[@]} > 1)); then
-					_d_fatal "ambiguous command '$cmd' -> ( ${detect[*]} )"
-				else
-					log "$cmd -> ${detect[0]}"
-					cmd="${detect[0]}"
-				fi
-			else
-				_d_err "command '$cmd' is not found!"
-				_d_usage
-				exit 127
-			fi
-		fi
-
-		gblcmd_$cmd "${cmd_args[@]}"
-		cmd_run_count=1
+		run_command "$cmd" "${args[@]}"
 	done
-
-	if [[ "$cmd_run_count" != "1" ]]; then
-		_d_usage
-	fi
-}
-
-_d_meta() {
-	case "${1:-}" in
-	_print_autocomplete) _d_print_autocomplete "${@:2}" ;;
-	_print_zsh_setup) _d_print_zsh_setup ;;
-	_has_bl) _d_has_bl "." && exit 0 || exit 1 ;;
-	_list_commands) _d_list_commands_raw ;;
-	*) return 1 ;;
-	esac
 }
 
 case "${1:-}" in
-_print_autocomplete)
-	_d_meta "$1" "${@:2}"
-	exit 0
+_has_bl)
+	[[ -f ./d.bl.sh || -d ./d.bl.sh ]]
 	;;
-_print_autocomplete_result | _list_commands)
-	_d_resolve_bl "." || _d_fatal "there is no ./d.bl.sh to run in this directory"
-	if [[ -d "$D_BL_SH_FILE" ]]; then
-		shopt -s nullglob
-		for _d_bl_file in "$D_BL_SH_FILE"/*.bl.sh; do
-			# shellcheck source=/dev/null
-			source "$_d_bl_file"
-		done
-		shopt -u nullglob
-	else
-		# shellcheck source=/dev/null
-		source "$D_BL_SH_FILE"
-	fi
-	unset _d_bl_file
-	_d_refresh_commands
-	[[ "$1" == "_print_autocomplete_result" ]] && {
-		_d_print_autocomplete_result "${@:2}"
-		exit 0
-	}
-	_d_meta "$1"
-	exit 0
+_list_commands)
+	load_dfile
+	list_commands
 	;;
-_print_zsh_setup | _has_bl)
-	_d_meta "$1"
-	exit $?
+_complete)
+	shift
+	complete_words "$@"
+	;;
+_print_zsh_setup)
+	print_zsh_setup
+	;;
+help | -h | --help | '')
+	load_dfile 2>/dev/null || true
+	usage
 	;;
 *)
-	_d_resolve_bl "." || _d_fatal "there is no ./d.bl.sh to run in this directory"
-	if [[ -d "$D_BL_SH_FILE" ]]; then
-		shopt -s nullglob
-		for _d_bl_file in "$D_BL_SH_FILE"/*.bl.sh; do
-			# shellcheck source=/dev/null
-			source "$_d_bl_file"
-		done
-		shopt -u nullglob
-	else
-		# shellcheck source=/dev/null
-		source "$D_BL_SH_FILE"
-	fi
-	unset _d_bl_file
-	_d_refresh_commands
-	_d_dispatch "$@"
+	load_dfile
+	dispatch "$@"
 	;;
 esac

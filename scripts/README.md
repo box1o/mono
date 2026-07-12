@@ -1,36 +1,40 @@
 # scripts
 
-## MGW via `d` (~)
+All scripts share the include layer in `scripts/lib`.
 
-```bash
-cd ~
-d relay MGW-6
-d relay MGW-2 ug-dev-v50-15218
-d scrcpy MGW-6
+Runtime config lives in:
+
+```text
+~/.config/mono/mono.conf
+~/.config/mono/<script>.conf
+~/.config/mono/dcmd.json
 ```
 
-## MGW + bridge
+Real machine-specific config stays local in `~/.config/mono` and is not stored in this repo.
+
+## Device Flow
 
 ```bash
-mgw mgw6
-bridge.sh relay mgw6
-# optional: bridge.sh relay mgw2 my-container
-
-bridge.sh listen mgw6
-
-mgw login mgw6
-# separate shell into rootfs
-
-apt update
-apt install python3-zmq
-python3 -c "import zmq; print(zmq.pyzmq_version())"
-
+mgw.sh <device>
+bridge.sh relay <device>
+bridge.sh listen <device>
+bridge.sh line full
 ```
 
-Container defaults to first running `ug-dev-v50*`.
+## Project Commands
 
-Ports: `55082` system (phone, local) · `55092` sent (relay from container)
+```bash
+d-init.sh
+d help
+d command
+```
 
-Relay only forwards `:55092` (container PUB). `:55082` is listened on the phone directly.
+## Deployment
 
-In container: `python3 sim/mgr_sim.py` → `run`
+Do not run setup while editing the scripts. After review:
+
+```bash
+./setup.sh --scripts --dry-run
+./setup.sh --configs --dry-run
+./setup.sh --scripts --replace
+```

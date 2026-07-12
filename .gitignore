@@ -1,4 +1,10 @@
 install.log
+.context/
+.backup/
+.config/mono/runnit/settings/
+configs/mono/*.conf
+configs/mono/*.json
+configs/mono/*.example
 
 .cache/
 .tmp/

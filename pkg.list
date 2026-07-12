@@ -52,6 +52,12 @@ starship
 
 # Editor and development
 neovim
+rust
+nodejs
+npm
+webkit2gtk-4.1
+libappindicator-gtk3
+librsvg
 go
 cmake
 gcc

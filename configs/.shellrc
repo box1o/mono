@@ -21,6 +21,9 @@ path_prepend "$SCRIPT_DIR"
 path_prepend "$HOME/go/bin"
 path_prepend "$HOME/.opencode/bin"
 
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk
+export PATH="$JAVA_HOME/bin:$PATH"
+
 # aliases
 alias ls='ls --color=auto'
 alias grep='grep --color=auto'
@@ -77,6 +80,12 @@ export ANDROID_SDK_ROOT="$ANDROID_HOME"
 path_prepend "$ANDROID_HOME/cmdline-tools/latest/bin"
 path_prepend "$ANDROID_HOME/emulator"
 path_prepend "$ANDROID_HOME/platform-tools"
+
+# emscripten
+export EMSDK_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/emsdk"
+if [[ -s "$EMSDK_ROOT/emsdk_env.sh" ]]; then
+  EMSDK_QUIET=1 source "$EMSDK_ROOT/emsdk_env.sh" >/dev/null 2>&1
+fi
 
 export PATH
 

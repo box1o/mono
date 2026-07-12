@@ -1,80 +1,87 @@
 #!/usr/bin/env bash
-
 set -euo pipefail
 
-IMG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/img"
-ROFI_THEME="${XDG_CONFIG_HOME:-$HOME/.config}/rofi/theme.rasi"
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/shared.inc"
 
-notify_cmd() {
-  if command -v notify-send >/dev/null 2>&1; then
-    notify-send "$@"
-  fi
+load_config image-colors
+
+IMG_DIR="${IMAGE_COLORS_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/hypr/img}"
+ROFI_THEME="${ROFI_THEME:-${XDG_CONFIG_HOME:-$HOME/.config}/rofi/theme.rasi}"
+
+need_cmd rofi
+
+load_images() {
+	find "$IMG_DIR" -maxdepth 1 -type f \
+		\( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) |
+		sort
 }
 
-copy_color() {
-  local color="$1"
-  if command -v wl-copy >/dev/null 2>&1; then
-    printf '%s' "$color" | wl-copy
-  else
-    printf '%s\n' "$color"
-  fi
+choose_image() {
+	local image
+
+	for image in "${images[@]}"; do
+		printf '%s\0icon\x1f%s\n' "$(basename "$image")" "$image"
+	done |
+		rofi -dmenu -i -show-icons -p Image -theme "$ROFI_THEME"
 }
 
-if ! command -v rofi >/dev/null 2>&1; then
-  echo "rofi is required" >&2
-  exit 1
-fi
+resolve_image() {
+	local chosen="$1"
+	local image
 
-mapfile -t images < <(
-  find "$IMG_DIR" -maxdepth 1 -type f \
-    \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) | sort
-)
+	for image in "${images[@]}"; do
+		if [[ "$(basename "$image")" == "$chosen" ]]; then
+			printf '%s\n' "$image"
+			return 0
+		fi
+	done
 
-if [[ ${#images[@]} -eq 0 ]]; then
-  notify_cmd "Image Colors" "No images found in $IMG_DIR"
-  exit 1
-fi
+	return 1
+}
 
-chosen_name=$(
-  for image in "${images[@]}"; do
-    printf '%s\0icon\x1f%s\n' "$(basename "$image")" "$image"
-  done |
-  rofi -dmenu -i -show-icons -p "Image" -theme "$ROFI_THEME")
-[[ -n "${chosen_name:-}" ]] || exit 0
+palette_command() {
+	local image="$1"
+	local cmd
 
-chosen_image=""
-for image in "${images[@]}"; do
-  if [[ "$(basename "$image")" == "$chosen_name" ]]; then
-    chosen_image="$image"
-    break
-  fi
-done
+	cmd="$(need_any_cmd magick convert)"
 
-[[ -n "$chosen_image" ]] || exit 1
+	if [[ "$cmd" == magick ]]; then
+		magick "$image" -resize 96x96\! -colors 16 -depth 8 -format %c histogram:info:-
+	else
+		convert "$image" -resize 96x96\! -colors 16 -depth 8 -format %c histogram:info:-
+	fi
+}
 
-if ! command -v magick >/dev/null 2>&1 && ! command -v convert >/dev/null 2>&1; then
-  notify_cmd "Image Colors" "Install imagemagick to extract palettes"
-  exit 1
-fi
+extract_palette() {
+	local image="$1"
 
-if command -v magick >/dev/null 2>&1; then
-  hist_cmd=(magick "$chosen_image" -resize 96x96\! -colors 16 -depth 8 -format %c histogram:info:-)
-else
-  hist_cmd=(convert "$chosen_image" -resize 96x96\! -colors 16 -depth 8 -format %c histogram:info:-)
-fi
+	palette_command "$image" |
+		sed -nE 's/^[[:space:]]*([0-9]+):.*(#([0-9A-Fa-f]{6})).*/\1 \2/p' |
+		sort -nr |
+		awk '!seen[$2]++ { printf "%s  <span foreground=\"%s\">████████</span>  %s\n", $2, $2, $1 }' |
+		head -n 16
+}
 
-palette="$("${hist_cmd[@]}" |
-  sed -nE 's/^[[:space:]]*([0-9]+):.*(#([0-9A-Fa-f]{6})).*/\1 \2/p' |
-  sort -nr |
-  awk '!seen[$2]++ { printf "%s  <span foreground=\"%s\">████████</span>  %s\n", $2, $2, $1 }' |
-  head -n 16)"
+choose_color() {
+	local palette="$1"
 
-[[ -n "$palette" ]] || exit 1
+	printf '%s\n' "$palette" |
+		rofi -dmenu -i -markup-rows -p Color -theme "$ROFI_THEME" -format s
+}
 
-selected=$(printf '%s\n' "$palette" |
-  rofi -dmenu -i -markup-rows -p "Color" -theme "$ROFI_THEME" -format s)
-[[ -n "${selected:-}" ]] || exit 0
+mapfile -t images < <(load_images)
+((${#images[@]})) || die "no images in $IMG_DIR"
+
+chosen="$(choose_image)"
+[[ -n "$chosen" ]] || exit 0
+
+image="$(resolve_image "$chosen")" || die "image not found"
+palette="$(extract_palette "$image")"
+selected="$(choose_color "$palette")"
+
+[[ -n "$selected" ]] || exit 0
 
 color="${selected%% *}"
-copy_color "$color"
-notify_cmd "Image Colors" "Copied $color from $chosen_name" -i "$chosen_image"
+printf '%s' "$color" | copy_text
+
+notify "Image Colors" "Copied $color from $chosen" -i "$image"

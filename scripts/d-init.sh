@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-
 set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-TARGET="${1:-./d.bl.sh}"
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/shared.inc"
 
-if [[ -e "$TARGET" ]]; then
-	echo "d-init: already exists: $TARGET" >&2
-	exit 1
+target="${1:-./d.bl.sh}"
+
+if [[ -e "$target" ]]; then
+	die "already exists: $target"
 fi
 
-cp -- "$SCRIPT_DIR/d.bl.sh.example" "$TARGET"
-chmod +x "$TARGET"
-echo "Created $TARGET"
+cp -- "$MONO_SCRIPT_DIR/d.bl.sh.example" "$target"
+chmod +x "$target"
+
+ok "created: $target"

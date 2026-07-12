@@ -62,6 +62,9 @@ window#waybar {
 
 #tray,
 #custom-dcmd,
+#custom-runnit,
+#custom-scrcpy,
+#custom-idle,
 #custom-bt-profile,
 #custom-dunst,
 #custom-media,
@@ -97,7 +100,16 @@ window#waybar {
   margin-right: 3px;
 }
 
+#custom-runnit {
+  color: @yellow;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
 #custom-dcmd:hover,
+#custom-runnit:hover,
+#custom-scrcpy:hover,
+#custom-idle:hover,
 #custom-bt-profile:hover,
 #custom-dunst:hover,
 #custom-media:hover,
@@ -173,6 +185,26 @@ window#waybar {
 #custom-dunst {
   padding-left: 6px;
   padding-right: 6px;
+}
+
+#custom-scrcpy {
+  color: @accent;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+#custom-idle {
+  color: @fg;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+#custom-idle.off {
+  color: @muted;
+}
+
+#custom-idle.warn {
+  color: @yellow;
 }
 
 #custom-media {

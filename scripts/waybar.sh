@@ -1,12 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
 
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/shared.inc"
 
-#!/bin/bash
+load_config waybar
 
-# Check if Waybar is running
-if pgrep -x "waybar" > /dev/null; then
-    notify-send "Waybar" "Restarting Waybar..." -t 500
-    killall waybar && waybar &
+if pgrep -x waybar >/dev/null 2>&1; then
+	notify "Waybar" "Restarting Waybar" -t 500
+	killall waybar || true
 else
-    notify-send "Waybar" "Starting Waybar..." -t 500
-    waybar &
+	notify "Waybar" "Starting Waybar" -t 500
 fi
+
+nohup waybar >/dev/null 2>&1 &

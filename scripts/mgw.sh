@@ -1,470 +1,433 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONFIG_FILE="$HOME/.config/devices/devices.conf"
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/shared.inc"
 
-ADB_PORT="5555"
-LOCAL_NET="127.10.0"
+load_config mgw
 
-log() {
-  echo "[mgw] $*"
-}
+DEFAULT_REMOTE_ADB_PORT="${MGW_ADB_PORT:-5555}"
+LOCAL_NET="${MGW_LOCAL_NET:-127.10.0}"
+LOCALHOST_PORT_BASE="${MGW_LOCALHOST_PORT_BASE:-5550}"
+DEVICES="${MGW_DEVICES:-1 2 3 4 5 6 7 8 9 10 11 12 13 14}"
+CHROOT="${MGW_CHROOT:-}"
 
-error() {
-  echo "[mgw][ERROR] $*" >&2
-}
+require_config() {
+	local dev ip_var
 
-usage() {
-  cat <<EOF
+	[[ -n "${SSH_HOST:-}" ]] || die "SSH_HOST missing in $(mono_config_file mgw)"
+	[[ -n "$LOCAL_NET" ]] || die "MGW_LOCAL_NET missing in $(mono_config_file mgw)"
 
-Usage:
-  mgw mgw1
-  mgw mgw2
-  mgw mgw3
-  mgw mgw4
-  mgw mgw5
-  mgw mgw6
-  mgw mgw7
-
-  mgw all
-  mgw stop mgw5
-  mgw stop all
-  mgw hosts
-  mgw list
-  mgw status
-  mgw scrcpy mgw5
-  mgw shell mgw5
-  mgw login mgw5
-
-After tunnel is started:
-  adb connect mgw5
-  scrcpy -s mgw5:5555
-
-EOF
-}
-
-load_config() {
-  log "Loading config: $CONFIG_FILE"
-
-  if [[ ! -f "$CONFIG_FILE" ]]; then
-    error "Config file not found: $CONFIG_FILE"
-    exit 1
-  fi
-
-  # shellcheck disable=SC1090
-  source "$CONFIG_FILE"
-
-  if [[ -z "${SSH_HOST:-}" ]]; then
-    error "SSH_HOST is missing in $CONFIG_FILE"
-    exit 1
-  fi
-
-  local dev
-  for dev in 1 2 3 4 5 6 7; do
-    local var="MGW${dev}_IP"
-    if [[ -z "${!var:-}" ]]; then
-      error "$var is missing in $CONFIG_FILE"
-      exit 1
-    fi
-  done
-
-  log "Config loaded"
-  log "SSH_HOST=$SSH_HOST"
-}
-
-check_commands() {
-  local cmd
-  for cmd in ssh pgrep getent; do
-    if ! command -v "$cmd" >/dev/null 2>&1; then
-      error "Missing command: $cmd"
-      exit 1
-    fi
-  done
+	for dev in $DEVICES; do
+		ip_var="MGW${dev}_IP"
+		[[ -n "${!ip_var:-}" ]] || die "$ip_var missing in mgw config"
+	done
 }
 
 normalize_device() {
-  local input="${1,,}"
+	local input="${1,,}"
 
-  case "$input" in
-    1|mgw1|mgr1) printf '%s\n' "1" ;;
-    2|mgw2|mgr2) printf '%s\n' "2" ;;
-    3|mgw3|mgr3) printf '%s\n' "3" ;;
-    4|mgw4|mgr4) printf '%s\n' "4" ;;
-    5|mgw5|mgr5) printf '%s\n' "5" ;;
-    6|mgw6|mgr6) printf '%s\n' "6" ;;
-    7|mgw7|mgr7) printf '%s\n' "7" ;;
-    *)
-      error "Unknown device: $input"
-      usage
-      exit 1
-      ;;
-  esac
+	input="${input#mgw}"
+	input="${input#mgr}"
+
+	[[ -n "$input" ]] || die "missing device"
+	[[ " $DEVICES " == *" $input "* ]] || die "unknown device: $1"
+
+	printf '%s\n' "$input"
 }
 
 device_name() {
-  local dev="$1"
-  printf 'mgw%s\n' "$dev"
+	printf 'mgw%s\n' "$1"
 }
 
-device_alias2() {
-  local dev="$1"
-  printf 'mgr%s\n' "$dev"
+device_alias() {
+	printf 'mgr%s\n' "$1"
 }
 
-remote_ip_for() {
-  local dev="$1"
-  local var="MGW${dev}_IP"
-  printf '%s\n' "${!var}"
+remote_ip() {
+	local var="MGW${1}_IP"
+	printf '%s\n' "${!var}"
 }
 
-local_ip_for() {
-  local dev="$1"
-  printf '%s.%s\n' "$LOCAL_NET" "$dev"
+remote_adb_port() {
+	local var="MGW${1}_ADB_PORT"
+	printf '%s\n' "${!var:-$DEFAULT_REMOTE_ADB_PORT}"
+}
+
+local_ip() {
+	printf '%s.%s\n' "$LOCAL_NET" "$1"
+}
+
+localhost_port() {
+	printf '%s\n' "$((LOCALHOST_PORT_BASE + $1))"
+}
+
+adb_serial_alias() {
+	printf '%s:%s\n' "$(device_alias "$1")" "$(remote_adb_port "$1")"
+}
+
+adb_serial_name() {
+	printf '%s:%s\n' "$(device_name "$1")" "$(remote_adb_port "$1")"
+}
+
+adb_serial_localhost() {
+	printf '127.0.0.1:%s\n' "$(localhost_port "$1")"
 }
 
 ssh_test() {
-  log "Testing SSH connection to $SSH_HOST..."
+	ssh -o BatchMode=yes -o ConnectTimeout=8 "$SSH_HOST" 'echo ssh-ok' >/dev/null
+}
 
-  if ! ssh -o BatchMode=yes -o ConnectTimeout=8 "$SSH_HOST" "echo ssh-ok" >/tmp/mgw_ssh_test.log 2>&1; then
-    error "SSH connection failed"
-    cat /tmp/mgw_ssh_test.log
-    exit 1
-  fi
+port_test() {
+	local host="$1"
+	local port="$2"
 
-  log "SSH connection OK"
+	timeout 3 bash -c ":</dev/tcp/${host}/${port}" >/dev/null 2>&1
+}
+
+remote_port_test() {
+	local dev="$1"
+
+	ssh "$SSH_HOST" \
+		"timeout 3 bash -c '</dev/tcp/$(remote_ip "$dev")/$(remote_adb_port "$dev")'" \
+		>/dev/null 2>&1
 }
 
 ensure_hosts() {
-  local missing=0
-  local dev
+	local dev
+	local begin="# MGW local ADB tunnel aliases"
+	local tmp
 
-  for dev in 1 2 3 4 5 6 7; do
-    if ! getent hosts "mgw${dev}" >/dev/null 2>&1; then
-      missing=1
-    fi
-  done
+	tmp="$(mktemp)"
 
-  if [[ "$missing" -eq 0 ]]; then
-    log "/etc/hosts already contains mgw aliases"
-    return 0
-  fi
+	sudo awk -v begin="$begin" '
+		$0 == begin { skip = 1; next }
+		skip && /^127\.10\.0\./ { next }
+		{ skip = 0; print }
+	' /etc/hosts > "$tmp"
 
-  log "Adding mgw aliases to /etc/hosts"
-  log "This may ask for sudo password"
+	{
+		cat "$tmp"
+		printf '\n%s\n' "$begin"
+		for dev in $DEVICES; do
+			printf '%s %s %s\n' \
+				"$(local_ip "$dev")" \
+				"$(device_name "$dev")" \
+				"$(device_alias "$dev")"
+		done
+	} | sudo tee /etc/hosts >/dev/null
 
-  sudo tee -a /etc/hosts >/dev/null <<EOF
+	rm -f "$tmp"
+}
 
-# MGW local ADB tunnel aliases
-127.10.0.1 mgw1 mgr1
-127.10.0.2 mgw2 mgr2
-127.10.0.3 mgw3 mgr3
-127.10.0.4 mgw4 mgr4
-127.10.0.5 mgw5 mgr5
-127.10.0.6 mgw6 mgr6
-127.10.0.7 mgw7 mgr7
-EOF
+tunnel_patterns() {
+	local dev="$1"
+	local rip rport lip lport
 
-  log "Aliases added"
+	rip="$(remote_ip "$dev")"
+	rport="$(remote_adb_port "$dev")"
+	lip="$(local_ip "$dev")"
+	lport="$(localhost_port "$dev")"
+
+	printf '%s\n' "ssh .*${lip}:${rport}:${rip}:${rport}"
+	printf '%s\n' "ssh .*127.0.0.1:${lport}:${rip}:${rport}"
+	printf '%s\n' "ssh .*${lip}:${DEFAULT_REMOTE_ADB_PORT}:${rip}:${rport}"
+	printf '%s\n' "ssh .*127.0.0.1:${lport}:${rip}:${rport}"
+	printf '%s\n' "ssh .*127.0.0.1:${lport}:${rip}:${DEFAULT_REMOTE_ADB_PORT}"
+}
+
+tunnel_pids() {
+	local dev="$1"
+	local pattern
+
+	while IFS= read -r pattern; do
+		pgrep -f "$pattern" || true
+	done < <(tunnel_patterns "$dev")
+}
+
+kill_tunnels() {
+	local dev="$1"
+	local pids
+
+	pids="$(tunnel_pids "$dev" | sort -u || true)"
+	[[ -n "$pids" ]] || return 0
+
+	kill_pids "$pids"
+}
+
+adb_disconnect_device() {
+	local dev="$1"
+
+	has_cmd adb || return 0
+
+	adb disconnect "$(device_alias "$dev"):$(remote_adb_port "$dev")" >/dev/null 2>&1 || true
+	adb disconnect "$(device_name "$dev"):$(remote_adb_port "$dev")" >/dev/null 2>&1 || true
+	adb disconnect "$(device_alias "$dev"):$DEFAULT_REMOTE_ADB_PORT" >/dev/null 2>&1 || true
+	adb disconnect "$(device_name "$dev"):$DEFAULT_REMOTE_ADB_PORT" >/dev/null 2>&1 || true
+	adb disconnect "$(adb_serial_localhost "$dev")" >/dev/null 2>&1 || true
+}
+
+adb_connect_device() {
+	local dev="$1"
+	local serial
+
+	has_cmd adb || return 0
+
+	serial="$(adb_serial_localhost "$dev")"
+
+	adb_disconnect_device "$dev"
+
+	adb connect "$serial" || true
+	adb reconnect offline >/dev/null 2>&1 || true
 }
 
 list_devices() {
-  echo
-  echo "Device list from config:"
-  echo
-  printf "%-8s %-8s %-16s %-16s\n" "Name" "Alias" "Remote IP" "Local IP"
-  printf "%-8s %-8s %-16s %-16s\n" "----" "-----" "---------" "--------"
+	local dev
 
-  local dev
-  for dev in 1 2 3 4 5 6 7; do
-    printf "%-8s %-8s %-16s %-16s\n" \
-      "$(device_name "$dev")" \
-      "$(device_alias2 "$dev")" \
-      "$(remote_ip_for "$dev")" \
-      "$(local_ip_for "$dev")"
-  done
+	printf '%-8s %-8s %-16s %-10s %-18s %-18s\n' \
+		Name Alias Remote RemotePort Localhost AliasTunnel
 
-  echo
-}
-
-find_adb_tunnel_pids() {
-  local local_ip="$1"
-  local remote_ip="$2"
-
-  pgrep -f "ssh .*${local_ip}:${ADB_PORT}:${remote_ip}:${ADB_PORT}" || true
+	for dev in $DEVICES; do
+		printf '%-8s %-8s %-16s %-10s %-18s %-18s\n' \
+			"$(device_name "$dev")" \
+			"$(device_alias "$dev")" \
+			"$(remote_ip "$dev")" \
+			"$(remote_adb_port "$dev")" \
+			"127.0.0.1:$(localhost_port "$dev")" \
+			"$(local_ip "$dev"):$(remote_adb_port "$dev")"
+	done
 }
 
 start_device() {
-  local raw_device="$1"
-  local dev
-  dev="$(normalize_device "$raw_device")"
+	local dev="$1"
+	local rip rport lip lport
 
-  ensure_hosts
+	dev="$(normalize_device "$dev")"
 
-  local name
-  local alias_name
-  local remote_ip
-  local local_ip
+	rip="$(remote_ip "$dev")"
+	rport="$(remote_adb_port "$dev")"
+	lip="$(local_ip "$dev")"
+	lport="$(localhost_port "$dev")"
 
-  name="$(device_name "$dev")"
-  alias_name="$(device_alias2 "$dev")"
-  remote_ip="$(remote_ip_for "$dev")"
-  local_ip="$(local_ip_for "$dev")"
+	ensure_hosts
+	ssh_test
 
-  log "Selected: $name"
-  log "Remote:   $remote_ip:$ADB_PORT"
-  log "Local:    $name:$ADB_PORT"
-  log "Alias:    $alias_name:$ADB_PORT"
-  log "Bind IP:  $local_ip:$ADB_PORT"
+	if ! remote_port_test "$dev"; then
+		die "remote ADB port is closed: ${rip}:${rport}. Set MGW${dev}_ADB_PORT to the active wireless-debugging port."
+	fi
 
-  local pids
-  pids="$(find_adb_tunnel_pids "$local_ip" "$remote_ip")"
+	kill_tunnels "$dev"
+	sleep 1
 
-  if [[ -n "$pids" ]]; then
-    log "Tunnel already running: PID(s) $pids"
-  else
-    ssh_test
+	ssh -fNT \
+		-o ExitOnForwardFailure=yes \
+		-o ServerAliveInterval=30 \
+		-o ServerAliveCountMax=3 \
+		-L "${lip}:${rport}:${rip}:${rport}" \
+		-L "127.0.0.1:${lport}:${rip}:${rport}" \
+		"$SSH_HOST"
 
-    log "Creating SSH tunnel:"
-    log "  $local_ip:$ADB_PORT -> $remote_ip:$ADB_PORT"
+	sleep 1
 
-    ssh -fNT \
-      -o ExitOnForwardFailure=yes \
-      -o ServerAliveInterval=30 \
-      -o ServerAliveCountMax=3 \
-      -L "${local_ip}:${ADB_PORT}:${remote_ip}:${ADB_PORT}" \
-      "$SSH_HOST"
+	if ! port_test "$lip" "$rport"; then
+		die "local alias tunnel is not reachable: ${lip}:${rport}"
+	fi
 
-    sleep 1
-  fi
+	if ! port_test "127.0.0.1" "$lport"; then
+		die "localhost tunnel is not reachable: 127.0.0.1:${lport}"
+	fi
 
-  pids="$(find_adb_tunnel_pids "$local_ip" "$remote_ip")"
+	adb_connect_device "$dev"
 
-  if [[ -z "$pids" ]]; then
-    error "Tunnel was not found after creating it"
-    exit 1
-  fi
-
-  log "Tunnel PID(s): $pids"
-  log "Ready"
-
-  echo
-  echo "Now you can use:"
-  echo "  adb connect $name"
-  echo "  adb connect $alias_name"
-  echo "  scrcpy -s $name:$ADB_PORT"
-  echo
+	ok "ready:"
+	ok "  device:      $(device_name "$dev")"
+	ok "  remote:      ${rip}:${rport}"
+	ok "  alias:       $(device_alias "$dev"):${rport}"
+	ok "  localhost:   127.0.0.1:${lport}"
 }
 
 stop_device() {
-  local raw_device="$1"
-  local dev
-  dev="$(normalize_device "$raw_device")"
+	local dev="$1"
 
-  local name
-  local alias_name
-  local remote_ip
-  local local_ip
+	dev="$(normalize_device "$dev")"
 
-  name="$(device_name "$dev")"
-  alias_name="$(device_alias2 "$dev")"
-  remote_ip="$(remote_ip_for "$dev")"
-  local_ip="$(local_ip_for "$dev")"
+	adb_disconnect_device "$dev"
+	kill_tunnels "$dev"
 
-  log "Stopping: $name"
+	ok "stopped: $(device_name "$dev")"
+}
 
-  if command -v adb >/dev/null 2>&1; then
-    adb disconnect "$name" >/dev/null 2>&1 || true
-    adb disconnect "$alias_name" >/dev/null 2>&1 || true
-    adb disconnect "$name:$ADB_PORT" >/dev/null 2>&1 || true
-    adb disconnect "$alias_name:$ADB_PORT" >/dev/null 2>&1 || true
-  fi
+restart_device() {
+	local dev="$1"
 
-  local pids
-  pids="$(find_adb_tunnel_pids "$local_ip" "$remote_ip")"
+	dev="$(normalize_device "$dev")"
 
-  if [[ -z "$pids" ]]; then
-    log "No tunnel found for $name"
-    return 0
-  fi
-
-  log "Killing tunnel PID(s): $pids"
-  kill $pids || true
+	stop_device "$dev"
+	start_device "$dev"
 }
 
 start_all() {
-  local dev
-  for dev in 1 2 3 4 5 6 7; do
-    echo
-    start_device "$dev"
-  done
+	local dev
+
+	for dev in $DEVICES; do
+		start_device "$dev"
+	done
 }
 
 stop_all() {
-  local dev
-  for dev in 1 2 3 4 5 6 7; do
-    stop_device "$dev"
-  done
+	local dev
+
+	for dev in $DEVICES; do
+		stop_device "$dev"
+	done
+}
+
+restart_all() {
+	local dev
+
+	for dev in $DEVICES; do
+		restart_device "$dev"
+	done
 }
 
 scrcpy_device() {
-  local raw_device="$1"
-  local dev
-  dev="$(normalize_device "$raw_device")"
+	local dev="$1"
 
-  start_device "$dev"
+	dev="$(normalize_device "$dev")"
+	start_device "$dev"
 
-  local name
-  name="$(device_name "$dev")"
-
-  if ! command -v scrcpy >/dev/null 2>&1; then
-    error "scrcpy not found"
-    exit 1
-  fi
-
-  scrcpy -s "$name:$ADB_PORT"
+	need_cmd scrcpy
+	scrcpy -s "$(adb_serial_localhost "$dev")"
 }
 
 shell_device() {
-  local raw_device="$1"
-  local dev
-  dev="$(normalize_device "$raw_device")"
+	local dev="$1"
 
-  start_device "$dev"
+	dev="$(normalize_device "$dev")"
+	start_device "$dev"
 
-  local name
-  name="$(device_name "$dev")"
-
-  if ! command -v adb >/dev/null 2>&1; then
-    error "adb not found"
-    exit 1
-  fi
-
-  adb connect "$name" >/dev/null || true
-  adb -s "$name:$ADB_PORT" shell
+	need_cmd adb
+	adb -s "$(adb_serial_localhost "$dev")" shell
 }
 
 login_device() {
-  local raw_device="$1"
-  local dev
-  dev="$(normalize_device "$raw_device")"
+	local dev="$1"
 
-  start_device "$dev"
+	dev="$(normalize_device "$dev")"
+	start_device "$dev"
 
-  local name
-  name="$(device_name "$dev")"
+	need_cmd adb
+	[[ -n "$CHROOT" ]] || die "MGW_CHROOT missing in $(mono_config_file mgw)"
 
-  if ! command -v adb >/dev/null 2>&1; then
-    error "adb not found"
-    exit 1
-  fi
-
-  adb connect "$name" >/dev/null || true
-  exec adb -s "$name:$ADB_PORT" shell -t \
-    'if [ ! -d /mnt/red-line-fs ]; then
-       echo "ERROR: /mnt/red-line-fs not found"
-       exit 1
-     fi
-     chroot /mnt/red-line-fs /usr/bin/env -i \
-       HOME=/root \
-       TERM=xterm \
-       PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
-       SHELL=/bin/bash \
-       /bin/bash -l'
+	exec adb -s "$(adb_serial_localhost "$dev")" shell -t \
+		"chroot $CHROOT /usr/bin/env -i HOME=/root TERM=xterm PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin SHELL=/bin/bash /bin/bash -l"
 }
 
 status() {
-  list_devices
+	list_devices
 
-  echo
-  log "Hosts:"
-  local dev
-  for dev in 1 2 3 4 5 6 7; do
-    getent hosts "mgw$dev" || true
-  done
+	printf '\nSSH tunnels:\n'
+	pgrep -af "ssh .*${LOCAL_NET}" || true
+	pgrep -af "ssh .*127.0.0.1:" || true
 
-  echo
-  log "Running tunnel processes:"
-  pgrep -af "ssh .*127.10.0" || true
+	if has_cmd adb; then
+		printf '\nADB devices:\n'
+		adb devices
+	fi
+}
 
-  echo
-  if command -v adb >/dev/null 2>&1; then
-    log "ADB devices:"
-    adb devices
-  fi
+check_device() {
+	local dev="$1"
+
+	dev="$(normalize_device "$dev")"
+
+	printf 'Checking %s\n' "$(device_name "$dev")"
+	printf 'Remote: %s:%s\n' "$(remote_ip "$dev")" "$(remote_adb_port "$dev")"
+
+	if remote_port_test "$dev"; then
+		ok "remote ADB port open"
+	else
+		die "remote ADB port closed: $(remote_ip "$dev"):$(remote_adb_port "$dev")"
+	fi
+}
+
+usage() {
+	cat <<EOF
+Usage:
+  mgw <mgwN|mgrN|N>          Start one device
+  mgw stop <mgwN|mgrN|N>     Stop one device
+  mgw restart <mgwN|N>       Restart one device
+  mgw check <mgwN|N>         Check remote ADB port from SSH host
+  mgw all                    Start all devices
+  mgw stop all               Stop all devices
+  mgw restart all            Restart all devices
+  mgw hosts                  Rewrite /etc/hosts aliases
+  mgw list                   List configured devices
+  mgw status                 Show tunnels and adb devices
+  mgw shell <mgwN|N>         Open adb shell
+  mgw login <mgwN|N>         Login via chroot
+  mgw scrcpy <mgwN|N>        Open scrcpy
+
+Config supports per-device remote ADB ports:
+  MGW8_ADB_PORT="37861"
+EOF
 }
 
 main() {
-  if [[ $# -lt 1 ]]; then
-    usage
-    exit 1
-  fi
+	require_config
 
-  load_config
-  check_commands
-
-  case "${1,,}" in
-    hosts)
-      ensure_hosts
-      list_devices
-      ;;
-
-    list)
-      list_devices
-      ;;
-
-    status)
-      status
-      ;;
-
-    all)
-      start_all
-      ;;
-
-    stop)
-      if [[ "${2:-}" == "all" ]]; then
-        stop_all
-      elif [[ -n "${2:-}" ]]; then
-        stop_device "$2"
-      else
-        error "Usage: mgw stop mgw5"
-        exit 1
-      fi
-      ;;
-
-    scrcpy)
-      if [[ -z "${2:-}" ]]; then
-        error "Usage: mgw scrcpy mgw5"
-        exit 1
-      fi
-      scrcpy_device "$2"
-      ;;
-
-    shell)
-      if [[ -z "${2:-}" ]]; then
-        error "Usage: mgw shell mgw5"
-        exit 1
-      fi
-      shell_device "$2"
-      ;;
-
-    login)
-      if [[ -z "${2:-}" ]]; then
-        error "Usage: mgw login mgw5"
-        exit 1
-      fi
-      login_device "$2"
-      ;;
-
-    1|2|3|4|5|6|7|mgw1|mgw2|mgw3|mgw4|mgw5|mgw6|mgw7|mgr1|mgr2|mgr3|mgr4|mgr5|mgr6|mgr7)
-      start_device "$1"
-      ;;
-
-    *)
-      error "Unknown command/device: $1"
-      usage
-      exit 1
-      ;;
-  esac
+	case "${1:-}" in
+	hosts)
+		ensure_hosts
+		list_devices
+		;;
+	list)
+		list_devices
+		;;
+	status)
+		status
+		;;
+	check)
+		[[ -n "${2:-}" ]] || die "missing device: mgw check <mgwN|N>"
+		check_device "$2"
+		;;
+	all)
+		start_all
+		;;
+	stop)
+		if [[ "${2:-}" == all ]]; then
+			stop_all
+		else
+			[[ -n "${2:-}" ]] || die "missing device: mgw stop <mgwN|N>"
+			stop_device "$2"
+		fi
+		;;
+	restart)
+		if [[ "${2:-}" == all ]]; then
+			restart_all
+		else
+			[[ -n "${2:-}" ]] || die "missing device: mgw restart <mgwN|N>"
+			restart_device "$2"
+		fi
+		;;
+	scrcpy)
+		[[ -n "${2:-}" ]] || die "missing device: mgw scrcpy <mgwN|N>"
+		scrcpy_device "$2"
+		;;
+	shell)
+		[[ -n "${2:-}" ]] || die "missing device: mgw shell <mgwN|N>"
+		shell_device "$2"
+		;;
+	login)
+		[[ -n "${2:-}" ]] || die "missing device: mgw login <mgwN|N>"
+		login_device "$2"
+		;;
+	-h | --help | help | '')
+		usage
+		;;
+	*)
+		start_device "$1"
+		;;
+	esac
 }
 
 main "$@"

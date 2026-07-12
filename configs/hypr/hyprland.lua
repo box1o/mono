@@ -9,13 +9,47 @@ local colors = {
 local mainMod = "SUPER"
 local terminal = "kitty"
 local fileManager = "nautilus"
-local browser = "zen-browser --blank-window file:///home/pixel/mono/configs/browser/index.html"
+local browser = "zen-browser --blank-window"
 local launcher = script .. "/rofi.sh"
-local dcmd = script .. "/dcmd"
+local runnit = script .. "/runnit"
+local shortcutProbeAction = "dev.runnit.shortcutprobe:shortcut-probe.toggle"
 
-hl.monitor({ output = "eDP-1", mode = "1920x1080@144", position = "0x0", scale = 1 })
-hl.monitor({ output = "eDP-2", mode = "1920x1080@144", position = "0x0", scale = 1 })
-hl.monitor({ output = "HDMI-A-1", mode = "1920x1080@60", position = "0x0", scale = 1 })
+local laptopOutputs = { "eDP-2", "eDP-1" }
+local hdmiOutput = "HDMI-A-1"
+
+local function monitor_connected(output)
+    return hl.get_monitor(output) ~= nil
+end
+
+local function first_connected_output(outputs)
+    for _, output in ipairs(outputs) do
+        if monitor_connected(output) then
+            return output
+        end
+    end
+
+    return outputs[1]
+end
+
+local laptopOutput = first_connected_output(laptopOutputs)
+local laptopPosition = "0x1200"
+
+hl.monitor({ output = hdmiOutput, mode = "preferred", position = "0x0", scale = 1 })
+hl.monitor({ output = laptopOutput, mode = "1920x1080@144.06", position = laptopPosition, scale = 1 })
+
+-- local laptopOutput = first_connected_output(laptopOutputs)
+-- local laptopPosition = "1920x600"
+--
+-- hl.monitor({ output = hdmiOutput, mode = "preferred", position = "0x0", scale = 1 })
+-- hl.monitor({ output = laptopOutput, mode = "1920x1080@144.06", position = laptopPosition, scale = 1 })
+
+for workspace = 1, 5 do
+    hl.workspace_rule({ workspace = tostring(workspace), monitor = laptopOutput })
+end
+
+for workspace = 6, 10 do
+    hl.workspace_rule({ workspace = tostring(workspace), monitor = hdmiOutput })
+end
 
 hl.env("XDG_CURRENT_DESKTOP", "Hyprland")
 hl.env("GTK_FONT_NAME", "Adwaita Sans 11")
@@ -111,7 +145,15 @@ hl.device({
 })
 
 hl.window_rule({ match = { title = "^(dcmd)$" }, float = true, center = true, size = { 1300, 850 } })
+hl.window_rule({
+    name = "runnit-shell",
+    match = { initial_class = "^Runnit$" },
+    float = true,
+    center = true,
+    size = { "monitor_w*0.75", "monitor_h*0.75" },
+})
 hl.window_rule({ match = { class = "^(Rofi)$" }, float = true, center = true })
+hl.window_rule({ match = { class = "^(scrcpy)$" }, float = true })
 hl.window_rule({ match = { class = "^(pavucontrol|org\\.pulseaudio\\.pavucontrol)$" }, float = true, center = true, size = { 760, 520 } })
 hl.window_rule({ match = { class = "^(kicad)$" }, float = true })
 hl.window_rule({ match = { class = "^(org\\.freecad\\.FreeCAD)$" }, float = true })
@@ -122,13 +164,14 @@ hl.window_rule({ match = { class = "^(gnome-disks|nm-connection-editor|blueman-m
 hl.window_rule({ match = { class = "^(qt5ct|qt6ct|kvantummanager|systemsettings|plasma-systemmonitor)$" }, float = true })
 hl.window_rule({ match = { class = "^(easyeffects|com\\.github\\.wwmm\\.easyeffects|helvum|org\\.pipewire\\.Helvum|qpwgraph|org\\.rncbc\\.qpwgraph)$" }, float = true })
 hl.window_rule({ match = { modal = true }, float = true, center = true })
-hl.window_rule({ match = { class = "^(Bitwarden|bitwarden|Spotify|spotify|pavucontrol|org\\.pulseaudio\\.pavucontrol|org\\.gnome\\.Calculator)$" }, workspace = "special:magic silent" })
+-- hl.window_rule({ match = { class = "^(Bitwarden|bitwarden|Spotify|spotify|pavucontrol|org\\.pulseaudio\\.pavucontrol|org\\.gnome\\.Calculator)$" }, workspace = "special:magic silent" })
 
 hl.bind("ALT + SHIFT + A", hl.dsp.exec_cmd(launcher))
 hl.bind("ALT + SHIFT + D", hl.dsp.exec_cmd(terminal))
 hl.bind("ALT + SHIFT + S", hl.dsp.exec_cmd(browser))
 hl.bind("ALT + SHIFT + F", hl.dsp.exec_cmd(fileManager))
-hl.bind("ALT + SHIFT + G", hl.dsp.exec_cmd(dcmd))
+hl.bind("ALT + SHIFT + R", hl.dsp.exec_cmd(runnit))
+hl.bind("ALT + SHIFT + P", hl.dsp.global(shortcutProbeAction))
 
 hl.bind("ALT + V", hl.dsp.exec_cmd(script .. "/clipboard.sh"))
 hl.bind(mainMod .. " + SHIFT + B", hl.dsp.exec_cmd(script .. "/pipfolow.sh"))
@@ -140,7 +183,7 @@ hl.bind(mainMod .. " + SHIFT + W", hl.dsp.exec_cmd(script .. "/wallpaper-picker.
 hl.bind(mainMod .. " + SHIFT + T", hl.dsp.exec_cmd(script .. "/theme.sh toggle"))
 hl.bind(mainMod .. " + SHIFT + O", hl.dsp.exec_cmd(script .. "/portal-restart.sh"))
 
-hl.bind("ALT + SHIFT + C", hl.dsp.window.kill())
+hl.bind("ALT + SHIFT + C", hl.dsp.exec_cmd(script .. "/close-hovered-window.sh"))
 hl.bind(mainMod .. " + M", hl.dsp.exec_cmd(script .. "/session.sh menu"))
 hl.bind(mainMod .. " + SHIFT + P", hl.dsp.exec_cmd("hyprpicker -a"))
 hl.bind(mainMod .. " + SHIFT + I", hl.dsp.exec_cmd(script .. "/image-colors.sh"))
@@ -151,10 +194,21 @@ hl.bind("ALT + N", hl.dsp.exec_cmd("kitty -e nmtui"))
 hl.bind("ALT + W", hl.dsp.window.float({ action = "toggle" }))
 hl.bind("ALT + SHIFT + W", hl.dsp.window.fullscreen())
 
-hl.bind("ALT + mouse:272", hl.dsp.window.drag(), { mouse = true })
-hl.bind("ALT + mouse:273", hl.dsp.window.resize(), { mouse = true })
-hl.bind(mainMod .. " + mouse:272", hl.dsp.window.drag(), { mouse = true })
-hl.bind(mainMod .. " + mouse:273", hl.dsp.window.resize(), { mouse = true })
+local function dispatch_unless_runnit(dispatcher)
+    return function()
+        local window = hl.get_active_window()
+        if window ~= nil and (window.initial_class == "Runnit" or window.initial_title == "Runnit") then
+            return
+        end
+
+        hl.dispatch(dispatcher)
+    end
+end
+
+hl.bind("ALT + mouse:272", dispatch_unless_runnit(hl.dsp.window.drag()), { mouse = true })
+hl.bind("ALT + mouse:273", dispatch_unless_runnit(hl.dsp.window.resize()), { mouse = true })
+hl.bind(mainMod .. " + mouse:272", dispatch_unless_runnit(hl.dsp.window.drag()), { mouse = true })
+hl.bind(mainMod .. " + mouse:273", dispatch_unless_runnit(hl.dsp.window.resize()), { mouse = true })
 
 hl.bind(mainMod .. " + left", hl.dsp.focus({ direction = "left" }))
 hl.bind(mainMod .. " + right", hl.dsp.focus({ direction = "right" }))

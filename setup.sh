@@ -1,578 +1,583 @@
 #!/usr/bin/env bash
-
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_SRC="$SCRIPT_DIR/configs"
-SCRIPT_SRC="$SCRIPT_DIR/scripts"
-ICONS_SRC="$SCRIPT_DIR/icons"
-PKG_LIST="$SCRIPT_DIR/pkg.list"
-LOG_FILE="$SCRIPT_DIR/install.log"
+REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+MONO_LIB_DIR="$REPO_DIR/scripts/lib"
+
+source "$MONO_LIB_DIR/log.inc"
+source "$MONO_LIB_DIR/config.inc"
+source "$MONO_LIB_DIR/require.inc"
+source "$MONO_LIB_DIR/fs.inc"
+source "$MONO_LIB_DIR/process.inc"
+source "$MONO_LIB_DIR/menu.inc"
+
+CONFIG_SRC="$REPO_DIR/configs"
+SCRIPT_SRC="$REPO_DIR/scripts"
+ICONS_SRC="$REPO_DIR/icons"
+RUNNIT_SRC="$REPO_DIR/apps/runnit"
+PKG_LIST="$REPO_DIR/pkg.list"
+LOG_FILE="$REPO_DIR/install.log"
 CONFIG_IGNORE_FILE="$CONFIG_SRC/.deployignore"
 
-CONFIG_DEST="$HOME/.config"
+CONFIG_DEST="${XDG_CONFIG_HOME:-$HOME/.config}"
 SCRIPT_DEST="$HOME/.local/share/bin"
 YAY_DIR="$HOME/yay"
+
 BACKUP_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/mono/backups"
 BACKUP_STAMP="$(date +%Y%m%d-%H%M%S)"
-
-BLUE="\033[0;34m"
-GREEN="\033[0;32m"
-YELLOW="\033[0;33m"
-RED="\033[0;31m"
-BOLD="\033[1m"
-RESET="\033[0m"
 
 INSTALL_PACKAGES=false
 DEPLOY_CONFIGS=false
 DEPLOY_SCRIPTS=false
+DEPLOY_APPS=false
 RUN_POSTINSTALL=false
 REPLACE=false
 YES=false
 DRY_RUN=false
 
 usage() {
-  cat <<EOF
-Usage:
-  ./setup.sh [options]
+	cat <<EOF_USAGE
+Usage: ./setup.sh [options]
 
 Options:
-  --all              Install packages, deploy configs, deploy scripts, and run post-install.
-  --packages         Install packages from pkg.list using yay.
-  --configs          Deploy configs and icon themes (also applies default dark theme).
-  --scripts          Deploy scripts to ~/.local/share/bin.
-  --postinstall      Run post-install tasks.
-  --replace          Replace existing deployed files.
-  -y, --yes          Do not ask confirmation for selected actions.
-  --dry-run          Print what would happen without writing files or installing packages.
+  --all              Install packages, configs, scripts, apps, and post-install tasks.
+  --packages         Install packages from pkg.list.
+  --configs          Deploy configs into \$HOME and \$XDG_CONFIG_HOME.
+  --scripts          Deploy scripts into ~/.local/share/bin.
+  --apps             Build and install local applications.
+  --postinstall      Run optional post-install tasks.
+  --replace          Back up and replace existing files.
+  -y, --yes          Accept prompts.
+  --dry-run          Print actions without changing files.
   -h, --help         Show this help.
-
-Examples:
-  ./setup.sh --all
-  ./setup.sh --packages
-  ./setup.sh --configs --scripts --replace
-  ./setup.sh --postinstall
-
-Post-install:
-  The post-install step asks which login shell to use, then offers optional setup
-  for VS Code, Android Studio, Tailscale, and Bluetooth.
-EOF
-}
-
-info() { printf "${BLUE}[*]${RESET} %s\n" "$1"; }
-ok() { printf "${GREEN}[ok]${RESET} %s\n" "$1"; }
-warn() { printf "${YELLOW}[!]${RESET} %s\n" "$1"; }
-fail() { printf "${RED}[x]${RESET} %s\n" "$1" >&2; }
-
-confirm() {
-  local prompt="$1"
-  $YES && return 0
-  local answer
-  while true; do
-    if ! read -r -p "$prompt [y/n]: " answer; then
-      printf "\n"
-      return 1
-    fi
-    case "$answer" in
-      y|Y) return 0 ;;
-      n|N) return 1 ;;
-      *) printf "Please answer y or n.\n" ;;
-    esac
-  done
+EOF_USAGE
 }
 
 parse_args() {
-  if [[ $# -eq 0 ]]; then
-    usage
-    exit 0
-  fi
+	if (($# == 0)); then
+		usage
+		exit 0
+	fi
 
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --all)
-        INSTALL_PACKAGES=true
-        DEPLOY_CONFIGS=true
-        DEPLOY_SCRIPTS=true
-        RUN_POSTINSTALL=true
-        ;;
-      --packages) INSTALL_PACKAGES=true ;;
-      --configs) DEPLOY_CONFIGS=true ;;
-      --scripts) DEPLOY_SCRIPTS=true ;;
-      --postinstall) RUN_POSTINSTALL=true ;;
-      --replace) REPLACE=true ;;
-      -y|--yes) YES=true ;;
-      --dry-run) DRY_RUN=true ;;
-      -h|--help)
-        usage
-        exit 0
-        ;;
-      *)
-        fail "Unknown option: $1"
-        usage
-        exit 1
-        ;;
-    esac
-    shift
-  done
+	while (($# > 0)); do
+		case "$1" in
+		--all)
+			INSTALL_PACKAGES=true
+			DEPLOY_CONFIGS=true
+			DEPLOY_SCRIPTS=true
+			DEPLOY_APPS=true
+			RUN_POSTINSTALL=true
+			;;
+		--packages)
+			INSTALL_PACKAGES=true
+			;;
+		--configs)
+			DEPLOY_CONFIGS=true
+			;;
+		--scripts)
+			DEPLOY_SCRIPTS=true
+			;;
+		--apps)
+			DEPLOY_APPS=true
+			;;
+		--postinstall)
+			RUN_POSTINSTALL=true
+			;;
+		--replace)
+			REPLACE=true
+			;;
+		-y | --yes)
+			YES=true
+			;;
+		--dry-run)
+			DRY_RUN=true
+			;;
+		-h | --help)
+			usage
+			exit 0
+			;;
+		*)
+			die "unknown option: $1"
+			;;
+		esac
+
+		shift
+	done
 }
 
 ensure_arch() {
-  if ! grep -qiE 'arch|cachyos|endeavouros|manjaro' /etc/os-release; then
-    fail "This installer expects an Arch-based system."
-    exit 1
-  fi
-}
-
-run_cmd() {
-  if $DRY_RUN; then
-    printf "dry-run: %s\n" "$*"
-    return 0
-  fi
-
-  "$@"
-}
-
-install_optional_package() {
-  local package="$1"
-  local label="$2"
-
-  if ! confirm "Install $label ($package)?"; then
-    return 0
-  fi
-
-  ensure_arch
-  ensure_yay
-
-  if $DRY_RUN; then
-    printf 'dry-run: yay -S --needed %s\n' "$package"
-  else
-    yay -S --needed "$package" 2>&1 | tee -a "$LOG_FILE"
-  fi
-}
-
-find_zen_desktop_file() {
-  local desktop
-
-  for desktop in zen.desktop zen-browser.desktop app.zen_browser.zen.desktop; do
-    if [[ -f "$HOME/.local/share/applications/$desktop" || -f "/usr/share/applications/$desktop" ]]; then
-      printf '%s\n' "$desktop"
-      return 0
-    fi
-  done
-
-  if command -v rg >/dev/null 2>&1; then
-    desktop="$(rg -l 'Exec=.*zen-browser|Name=.*Zen' "$HOME/.local/share/applications" /usr/share/applications 2>/dev/null | head -n 1 || true)"
-  else
-    desktop="$(grep -RilE 'Exec=.*zen-browser|Name=.*Zen' "$HOME/.local/share/applications" /usr/share/applications 2>/dev/null | head -n 1 || true)"
-  fi
-
-  [[ -n "$desktop" ]] && basename "$desktop"
-}
-
-set_default_browser() {
-  local desktop_file="$1"
-  local mime
-
-  if [[ -z "$desktop_file" ]]; then
-    warn "Zen desktop file was not found; default browser unchanged"
-    return 0
-  fi
-
-  info "Setting default browser to $desktop_file"
-
-  if command -v xdg-settings >/dev/null 2>&1; then
-    run_cmd xdg-settings set default-web-browser "$desktop_file"
-  else
-    warn "xdg-settings is not installed"
-  fi
-
-  if command -v xdg-mime >/dev/null 2>&1; then
-    for mime in \
-      x-scheme-handler/http \
-      x-scheme-handler/https \
-      text/html \
-      application/xhtml+xml \
-      application/x-extension-html \
-      application/x-extension-htm; do
-      run_cmd xdg-mime default "$desktop_file" "$mime"
-    done
-  else
-    warn "xdg-mime is not installed"
-  fi
+	grep -qiE 'arch|cachyos|endeavouros|manjaro' /etc/os-release || die "Arch-based system required"
 }
 
 ensure_yay() {
-  if command -v yay >/dev/null 2>&1; then
-    ok "yay is installed"
-    return 0
-  fi
+	if has_cmd yay; then
+		ok "yay installed"
+		return 0
+	fi
 
-  info "Installing yay"
-  run_cmd sudo pacman -S --needed --noconfirm git base-devel
+	ensure_arch
+	run sudo pacman -S --needed --noconfirm git base-devel
 
-  if [[ ! -d "$YAY_DIR" ]]; then
-    run_cmd git clone https://aur.archlinux.org/yay.git "$YAY_DIR"
-  fi
+	if [[ ! -d "$YAY_DIR" ]]; then
+		run git clone https://aur.archlinux.org/yay.git "$YAY_DIR"
+	fi
 
-  (
-    cd "$YAY_DIR"
-    run_cmd makepkg -si --noconfirm
-  )
+	(
+		cd "$YAY_DIR"
+		run makepkg -si --noconfirm
+	)
 }
 
 packages_from_list() {
-  awk '
-    /^[[:space:]]*$/ { next }
-    /^[[:space:]]*#/ { next }
-    { print $1 }
-  ' "$PKG_LIST"
+	awk 'NF && $1 !~ /^#/ { print $1 }' "$PKG_LIST"
 }
 
 install_packages() {
-  [[ -f "$PKG_LIST" ]] || { fail "Missing package list: $PKG_LIST"; exit 1; }
-  ensure_arch
-  ensure_yay
+	local packages
 
-  : > "$LOG_FILE"
-  mapfile -t packages < <(packages_from_list)
+	need_file "$PKG_LIST"
+	ensure_arch
+	ensure_yay
 
-  if [[ ${#packages[@]} -eq 0 ]]; then
-    warn "No packages found in pkg.list"
-    return 0
-  fi
+	: >"$LOG_FILE"
+	mapfile -t packages < <(packages_from_list)
 
-  info "Installing ${#packages[@]} packages from pkg.list"
-  if $DRY_RUN; then
-    printf 'dry-run: yay -S --needed %s\n' "${packages[*]}"
-    return 0
-  fi
+	if ((${#packages[@]} == 0)); then
+		warn "no packages found"
+		return 0
+	fi
 
-  yay -S --needed "${packages[@]}" 2>&1 | tee -a "$LOG_FILE"
-  ok "Package installation complete"
-  info "Log saved to $LOG_FILE"
-}
+	if $DRY_RUN; then
+		printf 'dry-run: yay -S --needed %s\n' "${packages[*]}"
+		return 0
+	fi
 
-copy_file() {
-  local src="$1"
-  local dst="$2"
-
-  if [[ -e "$dst" && "$REPLACE" != true ]]; then
-    warn "Exists, skipped: $dst"
-    return 0
-  fi
-
-  if $DRY_RUN; then
-    if [[ -e "$dst" && "$REPLACE" == true ]]; then
-      printf "dry-run: backup %s -> %s/%s\n" "$dst" "$BACKUP_ROOT" "$BACKUP_STAMP"
-    fi
-    printf "dry-run: install %s -> %s\n" "$src" "$dst"
-  else
-    if [[ -e "$dst" && "$REPLACE" == true ]]; then
-      backup_existing_file "$dst"
-    fi
-    mkdir -p "$(dirname "$dst")"
-    cp -f "$src" "$dst"
-  fi
-
-  if [[ -x "$src" && "$DRY_RUN" != true ]]; then
-    chmod +x "$dst"
-  fi
-}
-
-backup_existing_file() {
-  local file="$1"
-  local rel
-  local backup
-
-  if [[ "$file" == "$HOME/"* ]]; then
-    rel="${file#$HOME/}"
-  else
-    rel="${file#/}"
-  fi
-
-  backup="$BACKUP_ROOT/$BACKUP_STAMP/$rel"
-  mkdir -p "$(dirname "$backup")"
-  cp -a "$file" "$backup"
+	yay -S --needed "${packages[@]}" 2>&1 | tee -a "$LOG_FILE"
 }
 
 config_relpath() {
-  local path="$1"
+	local path="$1"
 
-  [[ "$path" == "$CONFIG_SRC"/* ]] || return 1
-  printf '%s\n' "${path#$CONFIG_SRC/}"
+	[[ "$path" == "$CONFIG_SRC"/* ]] || return 1
+	printf '%s\n' "${path#$CONFIG_SRC/}"
+}
+
+trim() {
+	local value="$1"
+
+	value="${value#"${value%%[![:space:]]*}"}"
+	value="${value%"${value##*[![:space:]]}"}"
+	printf '%s\n' "$value"
 }
 
 config_ignored() {
-  local path="$1"
-  local rel
+	local path="$1"
+	local rel pattern
 
-  [[ -f "$CONFIG_IGNORE_FILE" ]] || return 1
-  rel="$(config_relpath "$path")" || return 1
+	[[ -f "$CONFIG_IGNORE_FILE" ]] || return 1
+	rel="$(config_relpath "$path")" || return 1
 
-  while IFS= read -r pattern || [[ -n "$pattern" ]]; do
-    pattern="${pattern%%#*}"
-    pattern="${pattern#"${pattern%%[![:space:]]*}"}"
-    pattern="${pattern%"${pattern##*[![:space:]]}"}"
+	while IFS= read -r pattern || [[ -n "$pattern" ]]; do
+		pattern="${pattern%%#*}"
+		pattern="$(trim "$pattern")"
+		[[ -z "$pattern" || "$pattern" == .deployignore ]] && continue
 
-    [[ -z "$pattern" ]] && continue
-    [[ "$pattern" == .deployignore ]] && continue
+		pattern="${pattern#./}"
+		[[ "$pattern" == */ ]] && pattern="${pattern%/}"
 
-    pattern="${pattern#./}"
+		if [[ "$rel" == "$pattern" || "$rel" == "$pattern"/* || "$rel" == $pattern ]]; then
+			return 0
+		fi
+	done <"$CONFIG_IGNORE_FILE"
 
-    if [[ "$pattern" == */ ]]; then
-      pattern="${pattern%/}"
-      [[ "$rel" == "$pattern" || "$rel" == "$pattern"/* ]] && return 0
-    elif [[ "$rel" == "$pattern" || "$rel" == "$pattern"/* || "$rel" == $pattern ]]; then
-      return 0
-    fi
-  done < "$CONFIG_IGNORE_FILE"
-
-  return 1
+	return 1
 }
 
-copy_config_file() {
-  local src="$1"
-  local dst="$2"
-  local rel
+install_file() {
+	local src="$1"
+	local dst="$2"
 
-  if config_ignored "$src"; then
-    rel="$(config_relpath "$src")"
-    warn "Ignored by configs/.deployignore: $rel"
-    return 0
-  fi
+	if [[ -e "$dst" && "$REPLACE" != true ]]; then
+		warn "exists, skipped: $dst"
+		return 0
+	fi
 
-  copy_file "$src" "$dst"
+	if $DRY_RUN; then
+		return 0
+	fi
+
+	if [[ -e "$dst" && "$REPLACE" == true ]]; then
+		backup_file "$dst"
+	fi
+
+	mkdir -p "$(dirname "$dst")"
+	cp -f "$src" "$dst"
+
+	if [[ -x "$src" ]]; then
+		chmod +x "$dst"
+	fi
 }
 
-copy_tree_contents() {
-  local src_dir="$1"
-  local dst_dir="$2"
+install_config_file() {
+	local src="$1"
+	local dst="$2"
 
-  if [[ "$DRY_RUN" != true ]]; then
-    mkdir -p "$dst_dir"
-  fi
-  while IFS= read -r -d '' file; do
-    local rel="${file#$src_dir/}"
-    if [[ "$file" == "$CONFIG_SRC"/* ]]; then
-      copy_config_file "$file" "$dst_dir/$rel"
-    else
-      copy_file "$file" "$dst_dir/$rel"
-    fi
-  done < <(find "$src_dir" -type f -print0)
+	if config_ignored "$src"; then
+		warn "ignored: $(config_relpath "$src")"
+		return 0
+	fi
+
+	install_file "$src" "$dst"
 }
 
-patch_qt_home_paths() {
-  local file
+copy_tree() {
+	local src_dir="$1"
+	local dst_dir="$2"
+	local file rel
 
-  for file in "$CONFIG_DEST/qt5ct/qt5ct.conf" "$CONFIG_DEST/qt6ct/qt6ct.conf"; do
-    if $DRY_RUN; then
-      printf "dry-run: replace @HOME@ and @CONFIG_DIR@ in %s\n" "$file"
-    elif [[ -f "$file" ]]; then
-      sed -i "s|@HOME@|$HOME|g" "$file"
-      sed -i "s|@CONFIG_DIR@|$CONFIG_DEST|g" "$file"
-    fi
-  done
+	if [[ "$DRY_RUN" != true ]]; then
+		mkdir -p "$dst_dir"
+	fi
+
+	while IFS= read -r -d '' file; do
+		rel="${file#$src_dir/}"
+
+		if [[ "$file" == "$CONFIG_SRC"/* ]]; then
+			install_config_file "$file" "$dst_dir/$rel"
+		else
+			install_file "$file" "$dst_dir/$rel"
+		fi
+	done < <(find "$src_dir" -type f -print0)
 }
 
-patch_gtk_paths() {
-  local file
+patch_template_paths() {
+	local file
+	local files=(
+		"$CONFIG_DEST/qt5ct/qt5ct.conf"
+		"$CONFIG_DEST/qt6ct/qt6ct.conf"
+		"$CONFIG_DEST/gtk-3.0/settings.ini"
+		"$CONFIG_DEST/gtk-4.0/settings.ini"
+	)
 
-  for file in "$CONFIG_DEST/gtk-3.0/settings.ini" "$CONFIG_DEST/gtk-4.0/settings.ini"; do
-    if $DRY_RUN; then
-      printf "dry-run: replace @CONFIG_DIR@ in %s\n" "$file"
-    elif [[ -f "$file" ]]; then
-      sed -i "s|@CONFIG_DIR@|$CONFIG_DEST|g" "$file"
-    fi
-  done
-}
-reload_user_systemd() {
-  if command -v systemctl >/dev/null 2>&1; then
-    if $DRY_RUN; then
-      printf "dry-run: systemctl --user daemon-reload\n"
-    else
-      systemctl --user daemon-reload || warn "Failed to reload systemd user units"
-    fi
-  fi
-}
+	for file in "${files[@]}"; do
+		if $DRY_RUN; then
+			continue
+		fi
 
-deploy_configs() {
-  [[ -d "$CONFIG_SRC" ]] || { fail "Missing config directory: $CONFIG_SRC"; exit 1; }
-
-  info "Deploying configs to $CONFIG_DEST"
-  copy_config_file "$CONFIG_SRC/.bashrc" "$HOME/.bashrc"
-  copy_config_file "$CONFIG_SRC/.zshrc" "$HOME/.zshrc"
-  copy_config_file "$CONFIG_SRC/.shellrc" "$HOME/.shellrc"
-  copy_config_file "$CONFIG_SRC/.gitconfig" "$HOME/.gitconfig"
-  copy_config_file "$CONFIG_SRC/.tmux.conf" "$HOME/.config/tmux/tmux.conf"
-  [[ -f "$CONFIG_SRC/kdeglobals" ]] && copy_config_file "$CONFIG_SRC/kdeglobals" "$HOME/.config/kdeglobals"
-
-  while IFS= read -r -d '' dir; do
-    local name
-    name="$(basename "$dir")"
-    if config_ignored "$dir"; then
-      warn "Ignored by configs/.deployignore: $name/"
-      continue
-    fi
-    copy_tree_contents "$dir" "$CONFIG_DEST/$name"
-  done < <(find "$CONFIG_SRC" -mindepth 1 -maxdepth 1 -type d -print0)
-
-  # Copy custom color scheme files
-  [[ -f "$CONFIG_SRC/qt-colorscheme.colors" ]] && copy_config_file "$CONFIG_SRC/qt-colorscheme.colors" "$CONFIG_DEST/qt-colorscheme.colors"
-  [[ -f "$CONFIG_SRC/gtk-custom.css" ]] && copy_config_file "$CONFIG_SRC/gtk-custom.css" "$CONFIG_DEST/gtk-custom.css"
-
-  patch_qt_home_paths
-  patch_gtk_paths
-  reload_user_systemd
-
-  # Deploy icon themes
-  deploy_icons
-
-  # Apply dark theme by default
-  if [[ -x "$SCRIPT_SRC/theme.sh" ]] && ! $DRY_RUN; then
-    info "Applying default dark theme (modern preset)"
-    "$SCRIPT_SRC/theme.sh" apply modern || warn "Failed to apply theme"
-  fi
-
-  ok "Configs deployed"
-}
-
-deploy_scripts() {
-  [[ -d "$SCRIPT_SRC" ]] || { fail "Missing scripts directory: $SCRIPT_SRC"; exit 1; }
-
-  info "Deploying scripts to $SCRIPT_DEST"
-  mkdir -p "$SCRIPT_DEST"
-
-  while IFS= read -r -d '' script; do
-    local name
-    name="$(basename "$script")"
-    copy_file "$script" "$SCRIPT_DEST/$name"
-    if ! $DRY_RUN; then
-      chmod +x "$SCRIPT_DEST/$name"
-    fi
-  done < <(find "$SCRIPT_SRC" -maxdepth 1 -type f -print0)
-
-  ok "Scripts deployed"
+		[[ -f "$file" ]] || continue
+		sed -i "s|@HOME@|$HOME|g; s|@CONFIG_DIR@|$CONFIG_DEST|g" "$file"
+	done
 }
 
 deploy_icons() {
-  local icons_dest="$HOME/.local/share/icons"
+	local dir
+	local name
+	local dst
 
-  [[ -d "$ICONS_SRC" ]] || return 0
+	[[ -d "$ICONS_SRC" ]] || return 0
 
-  info "Deploying icon themes to $icons_dest"
+	log "deploying icons"
 
-  while IFS= read -r -d '' icon_theme; do
-    local theme_name
-    theme_name="$(basename "$icon_theme")"
-    copy_tree_contents "$icon_theme" "$icons_dest/$theme_name"
-  done < <(find "$ICONS_SRC" -mindepth 1 -maxdepth 1 -type d -print0)
+	while IFS= read -r -d '' dir; do
+		name="$(basename "$dir")"
+		dst="$HOME/.local/share/icons/$name"
 
-  ok "Icon themes deployed"
+		if [[ -d "$dst" ]]; then
+			warn "icon theme exists, skipped: $name"
+			continue
+		fi
+
+		copy_tree "$dir" "$dst"
+	done < <(find "$ICONS_SRC" -mindepth 1 -maxdepth 1 -type d -print0)
+}
+
+deploy_shell_configs() {
+	log "deploy shell configs"
+
+	install_config_file "$CONFIG_SRC/.bashrc" "$HOME/.bashrc"
+	install_config_file "$CONFIG_SRC/.zshrc" "$HOME/.zshrc"
+	install_config_file "$CONFIG_SRC/.shellrc" "$HOME/.shellrc"
+	install_config_file "$CONFIG_SRC/.gitconfig" "$HOME/.gitconfig"
+	install_config_file "$CONFIG_SRC/.tmux.conf" "$HOME/.config/tmux/tmux.conf"
+
+	if [[ -f "$CONFIG_SRC/kdeglobals" ]]; then
+		install_config_file "$CONFIG_SRC/kdeglobals" "$HOME/.config/kdeglobals"
+	fi
+}
+
+deploy_config_dirs() {
+	local dir name
+
+	log "deploy config directories"
+
+	while IFS= read -r -d '' dir; do
+		name="$(basename "$dir")"
+
+		if config_ignored "$dir"; then
+			warn "ignored: $name/"
+			continue
+		fi
+
+		copy_tree "$dir" "$CONFIG_DEST/$name"
+	done < <(find "$CONFIG_SRC" -mindepth 1 -maxdepth 1 -type d -print0)
+}
+
+deploy_standalone_config_files() {
+	log "deploy standalone config files"
+
+	if [[ -f "$CONFIG_SRC/qt-colorscheme.colors" ]]; then
+		install_config_file "$CONFIG_SRC/qt-colorscheme.colors" "$CONFIG_DEST/qt-colorscheme.colors"
+	fi
+
+	if [[ -f "$CONFIG_SRC/gtk-custom.css" ]]; then
+		install_config_file "$CONFIG_SRC/gtk-custom.css" "$CONFIG_DEST/gtk-custom.css"
+	fi
+}
+
+reload_user_systemd() {
+	has_cmd systemctl || return 0
+
+	log "reload systemd user units"
+	run systemctl --user daemon-reload || true
+}
+
+apply_default_theme() {
+	[[ "$DRY_RUN" == true ]] && return 0
+	[[ -x "$SCRIPT_SRC/theme.sh" ]] || return 0
+
+	"$SCRIPT_SRC/theme.sh" apply modern || true
+}
+
+deploy_configs() {
+	need_dir "$CONFIG_SRC"
+
+	deploy_shell_configs
+	deploy_config_dirs
+	deploy_standalone_config_files
+	patch_template_paths
+	reload_user_systemd
+	deploy_icons
+	apply_default_theme
+
+	ok "configs deployed"
+}
+
+deploy_scripts() {
+	need_dir "$SCRIPT_SRC"
+
+	if [[ "$DRY_RUN" != true ]]; then
+		mkdir -p "$SCRIPT_DEST"
+	fi
+
+	log "deploy script tree"
+	copy_tree "$SCRIPT_SRC" "$SCRIPT_DEST"
+
+	if [[ "$DRY_RUN" != true ]]; then
+		mark_deployed_scripts_executable
+	fi
+
+	ok "scripts deployed"
+}
+
+deploy_runnit() {
+	local manifest="$RUNNIT_SRC/src-tauri/Cargo.toml"
+	local binary="$RUNNIT_SRC/src-tauri/target/release/runnit"
+	local destination="$SCRIPT_DEST/runnit"
+
+	need_dir "$RUNNIT_SRC"
+	need_file "$RUNNIT_SRC/package-lock.json"
+	need_file "$manifest"
+	need_cmd npm
+	need_cmd cargo
+	need_cmd install
+
+	log "build Runnit frontend"
+	if $DRY_RUN; then
+		printf 'dry-run: (cd %q && npm ci && npm run build)\n' "$RUNNIT_SRC"
+		printf 'dry-run: cargo build --release --locked --manifest-path %q\n' "$manifest"
+		printf 'dry-run: install -Dm755 %q %q\n' "$binary" "$destination"
+		return 0
+	fi
+
+	(
+		cd "$RUNNIT_SRC"
+		npm ci
+		npm run build
+	)
+
+	log "build Runnit desktop binary"
+	cargo build --release --locked --manifest-path "$manifest"
+
+	log "install Runnit to $destination"
+	install -Dm755 "$binary" "$destination"
+	ok "Runnit installed"
+}
+
+deploy_apps() {
+	deploy_runnit
+}
+
+mark_deployed_scripts_executable() {
+	local script
+
+	log "mark scripts executable"
+
+	while IFS= read -r -d '' script; do
+		chmod +x "$script"
+	done < <(find "$SCRIPT_DEST" -maxdepth 1 -type f -print0)
+}
+
+find_zen_desktop_file() {
+	local desktop
+	local names=(
+		zen.desktop
+		zen-browser.desktop
+		app.zen_browser.zen.desktop
+	)
+
+	for desktop in "${names[@]}"; do
+		if [[ -f "$HOME/.local/share/applications/$desktop" || -f "/usr/share/applications/$desktop" ]]; then
+			printf '%s\n' "$desktop"
+			return 0
+		fi
+	done
+}
+
+set_default_browser() {
+	local desktop="$1"
+	local mime
+	local mimes=(
+		x-scheme-handler/http
+		x-scheme-handler/https
+		text/html
+		application/xhtml+xml
+		application/x-extension-html
+		application/x-extension-htm
+	)
+
+	if [[ -z "$desktop" ]]; then
+		warn "Zen desktop file not found"
+		return 0
+	fi
+
+	if has_cmd xdg-settings; then
+		run xdg-settings set default-web-browser "$desktop"
+	fi
+
+	if has_cmd xdg-mime; then
+		for mime in "${mimes[@]}"; do
+			run xdg-mime default "$desktop" "$mime"
+		done
+	fi
 }
 
 choose_shell() {
-  local current_shell
-  current_shell="$(getent passwd "$USER" | cut -d: -f7)"
+	printf 'zsh\nbash\nkeep\n' | menu_pick shell
+}
 
-  printf "\nCurrent shell: %s\n" "$current_shell" >&2
-  printf "Select login shell:\n" >&2
-  printf "  1) zsh\n" >&2
-  printf "  2) bash\n" >&2
-  printf "  3) keep current\n" >&2
+install_optional_package() {
+	local package="$1"
+	local label="$2"
 
-  local choice
-  while true; do
-    printf "Choice [1-3]: " >&2
-    read -r choice
-    case "$choice" in
-      1) echo "/usr/bin/zsh"; return 0 ;;
-      2) echo "/usr/bin/bash"; return 0 ;;
-      3|"") echo ""; return 0 ;;
-      *) printf "Choose 1, 2, or 3.\n" >&2 ;;
-    esac
-  done
+	confirm "Install $label ($package)?" || return 0
+
+	ensure_yay
+
+	if $DRY_RUN; then
+		printf 'dry-run: yay -S --needed %s\n' "$package"
+		return 0
+	fi
+
+	yay -S --needed "$package"
+}
+
+choose_login_shell() {
+	local choice shell_path=""
+
+	choice="$(choose_shell)"
+
+	case "$choice" in
+	zsh)
+		shell_path=/usr/bin/zsh
+		;;
+	bash)
+		shell_path=/usr/bin/bash
+		;;
+	*)
+		return 0
+		;;
+	esac
+
+	run chsh -s "$shell_path" "$USER"
 }
 
 postinstall() {
-  info "Post-install"
+	choose_login_shell
 
-  local shell_path
-  shell_path="$(choose_shell)"
-  if [[ -n "$shell_path" ]]; then
-    if [[ ! -x "$shell_path" ]]; then
-      fail "Shell not found or not executable: $shell_path"
-      return 1
-    fi
+	if has_cmd systemctl && confirm "Enable Bluetooth service?"; then
+		run sudo systemctl enable --now bluetooth
+	fi
 
-    if $DRY_RUN; then
-      printf "dry-run: chsh -s %s %s\n" "$shell_path" "$USER"
-    else
-      chsh -s "$shell_path" "$USER"
-    fi
-    ok "Login shell set to $shell_path"
-  else
-    ok "Login shell unchanged"
-  fi
+	if has_cmd systemctl && confirm "Enable power profiles service?"; then
+		run sudo systemctl enable --now power-profiles-daemon
+	fi
 
-  if command -v systemctl >/dev/null 2>&1 && confirm "Enable Bluetooth service?"; then
-    run_cmd sudo systemctl enable --now bluetooth
-  fi
+	if confirm "Restore encrypted personal secrets?"; then
+		run "$SCRIPT_SRC/secrets.sh" restore
+	fi
 
-  if command -v systemctl >/dev/null 2>&1 && confirm "Enable power profiles service?"; then
-    run_cmd sudo systemctl enable --now power-profiles-daemon
-  fi
+	install_optional_package visual-studio-code-bin "proprietary VS Code"
 
-  if confirm "Restore encrypted personal secrets?"; then
-    if $DRY_RUN; then
-      printf "dry-run: %s restore\n" "$SCRIPT_SRC/secrets.sh"
-    else
-      "$SCRIPT_SRC/secrets.sh" restore
-    fi
-  fi
+	if has_cmd code && confirm "Install VS Code Vim extension?"; then
+		run code --install-extension vscodevim.vim
+	fi
 
-  install_optional_package "visual-studio-code-bin" "proprietary VS Code"
-  if command -v code >/dev/null 2>&1 && confirm "Install VS Code Vim extension?"; then
-    run_cmd code --install-extension vscodevim.vim
-  fi
+	install_optional_package android-studio "Android Studio"
 
-  install_optional_package "android-studio" "Android Studio"
+	if confirm "Set Zen Browser as default?"; then
+		set_default_browser "$(find_zen_desktop_file)"
+	fi
 
-  if confirm "Set Zen Browser as the default browser?"; then
-    set_default_browser "$(find_zen_desktop_file)"
-  fi
+	if ! has_cmd tailscale; then
+		install_optional_package tailscale Tailscale
+	fi
 
-  if ! command -v tailscale >/dev/null 2>&1; then
-    install_optional_package "tailscale" "Tailscale"
-  fi
+	if has_cmd systemctl && confirm "Enable Tailscale service?"; then
+		run sudo systemctl enable --now tailscaled
+	fi
 
-  if command -v systemctl >/dev/null 2>&1 && confirm "Enable and start Tailscale service?"; then
-    run_cmd sudo systemctl enable --now tailscaled
-    if command -v tailscale >/dev/null 2>&1 && confirm "Run Tailscale login/setup now?"; then
-      run_cmd sudo tailscale up
-    fi
-  fi
-
-  ok "Post-install complete"
+	ok "postinstall complete"
 }
 
 main() {
-  parse_args "$@"
+	parse_args "$@"
 
-  if $INSTALL_PACKAGES && confirm "Install packages from pkg.list?"; then
-    install_packages
-  fi
+	if $INSTALL_PACKAGES && confirm "Install packages from pkg.list?"; then
+		log "installing packages"
+		install_packages
+	fi
 
-  if $DEPLOY_CONFIGS && confirm "Deploy configs?"; then
-    deploy_configs
-  fi
+	if $DEPLOY_CONFIGS && confirm "Deploy configs?"; then
+		log "deploying configs"
+		deploy_configs
+	fi
 
-  if $DEPLOY_SCRIPTS && confirm "Deploy scripts?"; then
-    deploy_scripts
-  fi
+	if $DEPLOY_SCRIPTS && confirm "Deploy scripts?"; then
+		log "deploying scripts"
+		deploy_scripts
+	fi
 
-  if $RUN_POSTINSTALL && confirm "Run post-install?"; then
-    postinstall
-  fi
+	if $DEPLOY_APPS && confirm "Build and install apps?"; then
+		log "deploying apps"
+		deploy_apps
+	fi
+
+	if $RUN_POSTINSTALL && confirm "Run post-install?"; then
+		log "running post-install"
+		postinstall
+	fi
+
+	ok "setup complete"
 }
 
 main "$@"

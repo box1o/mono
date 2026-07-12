@@ -27,3 +27,13 @@ autocmd("BufWritePre", {
 		conform.format({ bufnr = args.buf, timeout_ms = 500, lsp_format = "fallback" })
 	end,
 })
+
+autocmd("BufWritePost", {
+	group = augroup("LspCompileDb", { clear = true }),
+	pattern = "compile_commands.json",
+	callback = function()
+		vim.schedule(function()
+			pcall(vim.cmd.LspRestart)
+		end)
+	end,
+})

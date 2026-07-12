@@ -5,14 +5,14 @@
 .file-chooser-dialog,
 .dialog,
 .backdrop {
-	background-color: transparent !important;
-	box-shadow: none !important;
-	border: none !important;
-	border-radius: 0 !important;
-	outline: none !important;
+	background-color: transparent;
+	box-shadow: none;
+	border: none;
+	border-radius: 0;
+	outline: none;
 }
 
 *:focus {
-	box-shadow: none !important;
-	outline: none !important;
+	box-shadow: none;
+	outline: none;
 }

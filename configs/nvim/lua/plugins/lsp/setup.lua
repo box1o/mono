@@ -83,11 +83,12 @@ return {
 			})
 
 			local capabilities = require("blink.cmp").get_lsp_capabilities()
+			local clangd = require("config.clangd")
 			local has_rustc = vim.fn.executable("rustc") == 1
 
 			local servers = {
 				bashls = {},
-				clangd = {},
+				clangd = clangd.server(capabilities),
 				glsl_analyzer = {
 					filetypes = { "glsl" },
 				},

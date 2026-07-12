@@ -11,22 +11,22 @@ dialog,
 .gtk-portal-overlay,
 .xdg-portal-overlay,
 .portal-overlay {
-	background-color: transparent !important;
-	box-shadow: none !important;
-	border: none !important;
-	border-radius: 0 !important;
-	outline: none !important;
+	background-color: transparent;
+	box-shadow: none;
+	border: none;
+	border-radius: 0;
+	outline: none;
 }
 
 /* Remove focus shadows that produce framed edges */
 *:focus {
-	box-shadow: none !important;
-	outline: none !important;
+	box-shadow: none;
+	outline: none;
 }
 
 /* Optional: ensure file chooser headerbar blends */
 file-chooser headerbar,
 file-chooser headerbar * {
-	background-color: transparent !important;
-	box-shadow: none !important;
+	background-color: transparent;
+	box-shadow: none;
 }

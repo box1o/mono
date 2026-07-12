@@ -1,662 +1,198 @@
 #!/usr/bin/env python3
-"""Tabbed terminal UI for controlling UGW development devices."""
-
 from __future__ import annotations
 
-import asyncio
+import argparse
 import json
 import os
-from pathlib import Path
 import shutil
-import shlex
 import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
-from textual import on
-from textual.app import App, ComposeResult
-from textual.containers import Vertical
-from textual.widgets import (
-    DataTable,
-    Footer,
-    Header,
-    Input,
-    RichLog,
-    TabbedContent,
-    TabPane,
-)
-
-
-DEFAULT_CONTAINER = os.environ.get("DEV_CONTAINER", "ug-ide-v50")
-INSTALL_ROOT = "/app/install/ug/x86/debug"
-APP_NAME = "dcmd"
-CONFIG_DIR = Path.home() / ".config" / APP_NAME
-CONFIG_FILE = CONFIG_DIR / "config.json"
-TERMINAL_ENV = "DCMD_TERMINAL"
-DEFAULT_OUTPUT_HEIGHT = 20
+CONFIG_DIR = Path(os.environ.get("MONO_CONFIG_HOME", Path.home() / ".config" / "mono"))
+CONFIG_FILE = CONFIG_DIR / "dcmd.json"
 
 
 @dataclass(frozen=True)
-class CommandSpec:
-    category: str
-    label: str
-    description: str
-    command: str
+class Command:
+    name: str
+    body: str
 
 
-def load_config() -> dict[str, object]:
+COMMANDS = [
+    Command("activate", "px app stop || true; px cfg start; px app activate; px media create || true; px app start; px app status; px db"),
+    Command("clean-activate", "px app stop || true; px cfg start; px app activate; px media create || true; px app start; px app status; px db"),
+    Command("restart", "px app stop || true; px app start; px app status"),
+    Command("reset-db", "px app stop || true; px db reset; px app start; px app status; px db"),
+    Command("card-in", "$PCR event input reader inserted=true; $PCR event input card inserted=true; px db"),
+    Command("card-out", "$PCR event input card inserted=false; $PCR event input reader inserted=false; px db"),
+    Command("px-status", "px status"),
+    Command("px-db", "px db"),
+    Command("px-env", "px env"),
+    Command("logs", "px log last 120"),
+]
+
+
+def load_config() -> dict[str, str]:
     try:
-        with open(CONFIG_FILE, encoding="utf-8") as file:
-            data = json.load(file)
+        data = json.loads(CONFIG_FILE.read_text())
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return {}
+
     return data if isinstance(data, dict) else {}
 
 
-def save_config(config: dict[str, object]) -> None:
-    try:
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        with open(CONFIG_FILE, "w", encoding="utf-8") as file:
-            json.dump(config, file, indent=2, sort_keys=True)
-            file.write("\n")
-    except OSError:
-        pass
+def save_config(config: dict[str, str]) -> None:
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    CONFIG_FILE.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n")
 
 
-COMMANDS: tuple[CommandSpec, ...] = (
-    CommandSpec(
-        "Presets",
-        "Activate device",
-        "Run the full selected-device startup sequence.",
-        "px app stop || true; px cfg start; px app activate; px media create || true; px app start; px app status; px db",
-    ),
-    CommandSpec(
-        "Presets",
-        "Deactivate all devices",
-        "Stop app services for every installed x86 debug device profile.",
-        'for profile in /app/install/ug/x86/debug/*/home/fmc/.profile; do device="$(basename "$(dirname "$(dirname "$(dirname "$profile")")")")"; echo "== $device =="; source "$profile"; px app stop || true; done',
-    ),
-    CommandSpec(
-        "Presets",
-        "Clean activate",
-        "Stop services, activate, create default media, start, then show status and DB.",
-        "px app stop || true; px cfg start; px app activate; px media create || true; px app start; px app status; px db",
-    ),
-    CommandSpec(
-        "Presets",
-        "Harmony encrypted start",
-        "Prepare encrypted Harmony media and start all services.",
-        "px app stop || true; px cfg start; px app activate; px media create encrypted; px app start; px app status; px db",
-    ),
-    CommandSpec(
-        "Presets",
-        "Harmony legacy-v2 start",
-        "Prepare legacy-v2 Harmony media and start all services.",
-        "px app stop || true; px cfg start; px app activate; px media create legacy-v2; px app start; px app status; px db",
-    ),
-    CommandSpec(
-        "Presets",
-        "Restart app",
-        "Stop and start all selected profile services.",
-        "px app stop || true; px app start; px app status",
-    ),
-    CommandSpec(
-        "Presets",
-        "Reset DB and restart",
-        "Reset local PCR DB, restart services, then show DB.",
-        "px app stop || true; px db reset; px app start; px app status; px db",
-    ),
-    CommandSpec(
-        "Presets",
-        "Inject card",
-        "Send one reader insert and one card insert event, then show DB.",
-        "$PCR event input reader inserted=true; $PCR event input card inserted=true; px db",
-    ),
-    CommandSpec(
-        "Presets",
-        "Remove card",
-        "Set card removed and reader detached, then show DB.",
-        "$PCR event input card inserted=false; $PCR event input reader inserted=false; px db",
-    ),
-    CommandSpec(
-        "Presets",
-        "Reinsert card",
-        "Remove, wait, reinsert reader/card, then show DB.",
-        "$PCR event input card inserted=false; $PCR event input reader inserted=false; sleep 1; $PCR event input reader inserted=true; $PCR event input card inserted=true; px db",
-    ),
-    CommandSpec(
-        "Presets",
-        "Prescription check",
-        "Show DB and recent RX/archive files.",
-        'px db; find "$PCR_RX" -maxdepth 3 -type f 2>/dev/null | sort | tail -n 40; find "$PCR_MGR_ARCHIVE" -maxdepth 4 -type f 2>/dev/null | grep -E "rx|notify" | tail -n 40',
-    ),
-    CommandSpec(
-        "Presets",
-        "Treatment check",
-        "Show DB and recent TX/card archive files.",
-        'px db; find "$PCR_MGR_ARCHIVE" -maxdepth 4 -type f 2>/dev/null | grep -E "tx|card" | tail -n 80',
-    ),
-    CommandSpec(
-        "Presets",
-        "ThingWorx check",
-        "Show TWX services, host, device id, and EMS log tail.",
-        "px twx status; px ems host; px lua id; px ems tail",
-    ),
-    CommandSpec("PX", "px status", "Show all PCR service status.", "px status"),
-    CommandSpec("PX", "px env", "Show PCR environment.", "px env"),
-    CommandSpec("PX", "px db", "Show local PCR status DB.", "px db"),
-    CommandSpec("PX", "px db reset", "Reset local PCR status DB.", "px db reset"),
-    CommandSpec("PX", "px app status", "Show app service status.", "px app status"),
-    CommandSpec("PX", "px app start", "Start cfg, EMS, Lua, manager, and monitor.", "px app start; px app status"),
-    CommandSpec("PX", "px app stop", "Stop cfg, EMS, Lua, manager, and monitor.", "px app stop || true"),
-    CommandSpec("PX", "px app activate", "Run app activation script.", "px app activate"),
-    CommandSpec("PX", "px cfg keys", "List config keys.", "px cfg keys"),
-    CommandSpec("PX", "px cfg ping", "Ping config server.", "px cfg ping"),
-    CommandSpec("PX", "px mgr status", "Show Gateway Manager status.", "px mgr status"),
-    CommandSpec("PX", "px mgr wos --all", "List manager workorders.", "px mgr wos --all"),
-    CommandSpec("PX", "px twx status", "Show EMS and Lua status.", "px twx status"),
-    CommandSpec("PX", "px ems host", "Show remote EMS/TWX host.", "px ems host"),
-    CommandSpec("PX", "px lua id", "Show Lua/ThingWorx device id.", "px lua id"),
-    CommandSpec("PX", "px clean", "Remove transient PCR directories.", "px clean"),
-    CommandSpec("Media", "Create encrypted", "Create encrypted Harmony fmc_chip media.", "px media create encrypted; px media dir"),
-    CommandSpec("Media", "Create legacy-v2", "Create legacy-v2 Harmony fmc_chip media.", "px media create legacy-v2; px media dir"),
-    CommandSpec("Media", "Create legacy-v1", "Create legacy-v1 Harmony fmc_chip media.", "px media create legacy-v1; px media dir"),
-    CommandSpec("Media", "Show media", "Print media path and files.", 'px media dir; find "$PCR_MEDIA" -maxdepth 4 -type f | sort | sed -n "1,120p"'),
-    CommandSpec("Media", "Clear media", "Remove simulated fmc_chip media.", "px media clear; px media dir"),
-    CommandSpec("Media", "Card inserted", "Send one reader insert and one card insert event.", "$PCR event input reader inserted=true; $PCR event input card inserted=true; px db"),
-    CommandSpec("Media", "Card removed", "Inject card removed and reader detached events.", "$PCR event input card inserted=false; $PCR event input reader inserted=false; px db"),
-    CommandSpec("Logs", "PCR last 120", "Show last 120 PCR log lines.", "px log last 120"),
-    CommandSpec("Logs", "PCR show", "Show active PCR log.", "px log show"),
-    CommandSpec("Logs", "PCR list", "List PCR log files.", "px log list"),
-    CommandSpec("Logs", "PCR filter rx", "Filter PCR logs for rx.", "px log filter rx"),
-    CommandSpec("Logs", "PCR filter tx", "Filter PCR logs for tx.", "px log filter tx"),
-    CommandSpec("Logs", "Manager log", "Show manager log.", "px mgr log"),
-    CommandSpec("Logs", "EMS log", "Show EMS log.", "px ems log"),
-    CommandSpec("Logs", "Lua log", "Show Lua log.", "px lua log"),
-    CommandSpec("Logs", "Notifications archive", "List notification archive.", "px mgr archive --notifications"),
-    CommandSpec("Logs", "Trash archive", "List trash archive.", "px mgr archive --trash"),
-    CommandSpec("Liberty", "PTY start", "Start Liberty pseudo-terminal pair.", "px liberty pty start; px liberty pty status"),
-    CommandSpec("Liberty", "PTY status", "Show Liberty PTY status.", "px liberty pty status"),
-    CommandSpec("Liberty", "PTY attach", "Set UGW_SERIAL_DEVICE and show PTY status.", "px liberty pty attach; px liberty pty status"),
-    CommandSpec("Liberty", "PTY stop", "Stop Liberty pseudo-terminal pair.", "px liberty pty stop; px liberty pty status"),
-    CommandSpec("Liberty", "Liberty status", "Show app, manager, and DB status.", "px app status; px mgr status; px db"),
-    CommandSpec("GW", "gw env show", "Show GW environment.", "gw env show"),
-    CommandSpec("GW", "gw install path", "Show selected profile install path.", "gw --profile x86/debug/{device} env show --group GW --var install --raw"),
-    CommandSpec("GW", "gw version", "Show version information.", "gw version"),
-    CommandSpec("GW", "gw ug help", "Show UGW command surface.", "gw ug"),
-    CommandSpec("GW", "recipe import", "Import x86-dev SDK recipe from Azure.", "gw recipe import --variant x86-dev --source azure"),
-    CommandSpec("GW", "package device", "Package selected x86-dev device.", "gw ug recipe package --variant x86-dev --device {device}"),
-)
+def config_value(config: dict[str, str], key: str, env_key: str | None = None) -> str:
+    env_key = env_key or key.upper()
+    value = os.environ.get(env_key) or config.get(key) or ""
+    return str(value)
 
 
-class DeviceControlApp(App[None]):
-    CSS = """
-    Screen {
-        background: #111111;
-        color: #eeeeee;
-        layout: vertical;
-    }
+def require_value(config: dict[str, str], key: str, env_key: str | None = None) -> str:
+    value = config_value(config, key, env_key)
+    if not value:
+        raise SystemExit(f"missing {key} in {CONFIG_FILE}")
+    return value
 
-    #command-tabs {
-        height: 1fr;
-        min-height: 12;
-        padding: 0 1;
-        background: #111111;
-    }
 
-    TabPane {
-        padding: 0;
-        background: #111111;
-    }
-
-    DataTable {
-        height: 1fr;
-        border: none;
-        background: #111111;
-    }
-
-    #custom-pane {
-        padding: 1;
-        height: 1fr;
-        background: #111111;
-    }
-
-    #custom-input {
-        margin: 1 0;
-    }
-
-    #output {
-        height: 20;
-        padding: 0 1;
-        margin: 0;
-        border: none;
-        background: #0b0b0b;
-    }
-    """
-
-    BINDINGS = [
-        ("q", "quit", "Quit"),
-        ("r", "run_selected", "Run"),
-        ("x", "cancel_command", "Stop"),
-        ("c", "copy_output", "Copy"),
-        ("d", "next_device", "Device"),
-        ("+", "output_bigger", "Output+"),
-        ("-", "output_smaller", "Output-"),
-        ("f5", "refresh_devices", "Refresh"),
-        ("ctrl+l", "clear_output", "Clear"),
-    ]
-
-    def __init__(self, container: str) -> None:
-        super().__init__()
-        self.config = load_config()
-        self.container = container
-        self.devices: list[str] = []
-        self.current_device = ""
-        self.selected_command: CommandSpec | None = None
-        configured_height = self.config.get("output_height", DEFAULT_OUTPUT_HEIGHT)
-        self.output_height = configured_height if isinstance(configured_height, int) else DEFAULT_OUTPUT_HEIGHT
-        self.running_task: asyncio.Task[None] | None = None
-        self.current_process: asyncio.subprocess.Process | None = None
-        self.output_lines: list[str] = []
-
-    def compose(self) -> ComposeResult:
-        yield Header(show_clock=True)
-        with TabbedContent(id="command-tabs"):
-            for category in ("Presets", "PX", "Media", "Logs", "Liberty", "GW"):
-                with TabPane(category, id=f"tab-{category.lower()}"):
-                    table = DataTable(
-                        id=f"table-{category.lower()}",
-                        show_header=False,
-                        show_row_labels=False,
-                        cell_padding=0,
-                    )
-                    table.cursor_type = "row"
-                    table.zebra_stripes = False
-                    table.add_column("Command")
-                    for spec in self.commands_for(category):
-                        table.add_row(spec.label, key=spec.label)
-                    yield table
-
-            with TabPane("Custom", id="tab-custom"):
-                with Vertical(id="custom-pane"):
-                    yield Input(placeholder="example: px db", id="custom-input")
-
-        yield RichLog(id="output", wrap=True, highlight=True, markup=True)
-        yield Footer()
-
-    async def on_mount(self) -> None:
-        self.title = "dcmd"
-        self.query_one("#output", RichLog).styles.height = self.output_height
-        await self.refresh_devices()
-        self.select_first_command()
-
-    @staticmethod
-    def commands_for(category: str) -> list[CommandSpec]:
-        return [command for command in COMMANDS if command.category == category]
-
-    def select_first_command(self) -> None:
-        for category in ("Presets", "PX", "Media", "Logs", "Liberty", "GW"):
-            commands = self.commands_for(category)
-            if commands:
-                self.selected_command = commands[0]
-                return
-
-    async def refresh_devices(self) -> None:
-        output = await self.run_host("docker", "ps", "--format", "{{.Names}}")
-        if self.container not in output.splitlines():
-            self.set_status(f"container not running: {self.container}")
-            self.log_error(f"Container '{self.container}' is not running.")
-            return
-
-        command = f"find {shlex.quote(INSTALL_ROOT)} -mindepth 1 -maxdepth 1 -type d -printf '%f\\n' | sort"
-        output = await self.run_host("docker", "exec", self.container, "bash", "-lc", command)
-        self.devices = [line.strip() for line in output.splitlines() if line.strip()]
-
-        if not self.devices:
-            self.current_device = ""
-            self.set_status("no installed devices found")
-            return
-
-        last_device = self.config.get("device")
-        if isinstance(last_device, str) and last_device in self.devices:
-            self.current_device = last_device
-        else:
-            self.current_device = "aj0002" if "aj0002" in self.devices else self.devices[0]
-        self.set_status("ready")
-        self.log_info(f"Loaded devices: {', '.join(self.devices)}")
-
-    async def run_host(self, *args: str) -> str:
-        process = await asyncio.create_subprocess_exec(
-            *args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await process.communicate()
-        text = stdout.decode(errors="replace")
-        err = stderr.decode(errors="replace")
-        if process.returncode != 0:
-            return f"{text}{err}"
-        return text
-
-    async def run_device_command(self, spec: CommandSpec) -> None:
-        if not self.current_device:
-            self.log_error("No device selected.")
-            return
-
-        command = spec.command.format(device=self.current_device)
-        profile = f"{INSTALL_ROOT}/{self.current_device}/home/fmc/.profile"
-        inner = f"source {shlex.quote(profile)}; {command}"
-
-        self.clear_output()
-        self.set_status(f"running: {spec.label}")
-        self.log_info(f"$ {command}")
-
-        try:
-            process = await asyncio.create_subprocess_exec(
-                "docker",
-                "exec",
-                self.container,
-                "bash",
-                "-lc",
-                inner,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-            )
-            self.current_process = process
-            assert process.stdout is not None
-
-            while True:
-                chunk = await process.stdout.readline()
-                if not chunk:
-                    break
-                self.write_output(chunk.decode(errors="replace").rstrip())
-
-            code = await process.wait()
-            if code == 0:
-                self.set_status(f"done: {spec.label}")
-                self.log_info(f"exit status: {code}")
-            else:
-                self.set_status(f"failed: {spec.label}")
-                self.log_error(f"exit status: {code}")
-        except asyncio.CancelledError:
-            self.set_status(f"cancelled: {spec.label}")
-            self.log_error(f"cancelled: {spec.label}")
-            raise
-        finally:
-            self.current_process = None
-            self.running_task = None
-
-    def set_status(self, text: str) -> None:
-        device = self.current_device or "no-device"
-        self.sub_title = f"{self.container} / {device} / {text}"
-
-    def log_info(self, text: str) -> None:
-        self.write_output(text, markup=f"[bold]{text}[/bold]")
-
-    def log_error(self, text: str) -> None:
-        self.write_output(text, markup=f"[bold red]{text}[/bold red]")
-
-    def write_output(self, text: str, markup: str | None = None) -> None:
-        self.output_lines.append(text)
-        self.query_one("#output", RichLog).write(markup if markup is not None else text)
-
-    def action_run_selected(self) -> None:
-        if not self.selected_command:
-            return
-
-        if self.running_task and not self.running_task.done():
-            self.log_error("A command is already running. Press x to stop it first.")
-            return
-
-        self.running_task = asyncio.create_task(self.run_device_command(self.selected_command))
-
-    def action_cancel_command(self) -> None:
-        asyncio.create_task(self.cancel_running_command())
-
-    async def cancel_running_command(self) -> None:
-        process = self.current_process
-        if not process or process.returncode is not None:
-            self.log_error("No running command to stop.")
-            return
-
-        self.set_status("stopping command")
-        self.log_info("Stopping running command...")
-        process.terminate()
-        try:
-            await asyncio.wait_for(process.wait(), timeout=2)
-        except asyncio.TimeoutError:
-            process.kill()
-            await process.wait()
-
-    def action_clear_output(self) -> None:
-        self.clear_output()
-
-    def clear_output(self) -> None:
-        self.output_lines.clear()
-        self.query_one("#output", RichLog).clear()
-
-    def action_copy_output(self) -> None:
-        text = "\n".join(self.output_lines).rstrip() + "\n"
-        path = "/tmp/mgw-device-ui-output.txt"
-        with open(path, "w", encoding="utf-8") as file:
-            file.write(text)
-
-        self.log_info(f"Output saved to {path}")
-        asyncio.create_task(self.copy_to_clipboard(text, path))
-
-    async def copy_to_clipboard(self, text: str, path: str) -> None:
-        if shutil.which("wl-copy") and os.environ.get("WAYLAND_DISPLAY"):
-            try:
-                process = await asyncio.create_subprocess_exec(
-                    "wl-copy",
-                    stdin=asyncio.subprocess.PIPE,
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.DEVNULL,
-                )
-                assert process.stdin is not None
-                process.stdin.write(text.encode())
-                await process.stdin.drain()
-                process.stdin.close()
-                self.log_info("Output sent to wl-copy clipboard")
-                return
-            except OSError as error:
-                self.log_error(f"wl-copy failed: {error}")
-
-        commands = (
-            ("xclip", "-selection", "clipboard"),
-            ("xsel", "--clipboard", "--input"),
-            ("pbcopy",),
-        )
-        for command in commands:
-            if not shutil.which(command[0]):
-                continue
-            if command[0] in {"xclip", "xsel"} and not os.environ.get("DISPLAY"):
-                continue
-            try:
-                process = await asyncio.create_subprocess_exec(
-                    *command,
-                    stdin=asyncio.subprocess.PIPE,
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                _, stderr = await asyncio.wait_for(
-                    process.communicate(text.encode()),
-                    timeout=1.5,
-                )
-            except asyncio.TimeoutError:
-                process.kill()
-                await process.wait()
-                self.log_error(f"{command[0]} timed out; output remains saved to {path}")
-                continue
-
-            if process.returncode == 0:
-                self.log_info(f"Output copied to clipboard")
-                return
-
-            error = stderr.decode(errors="replace").strip()
-            if error:
-                self.log_error(f"{command[0]} failed: {error}")
-
-        self.log_info(f"Clipboard unavailable; output remains saved to {path}")
-
-    async def action_refresh_devices(self) -> None:
-        await self.refresh_devices()
-
-    def action_next_device(self) -> None:
-        if not self.devices:
-            self.log_error("No devices loaded.")
-            return
-
-        if self.current_device not in self.devices:
-            self.current_device = self.devices[0]
-        else:
-            index = self.devices.index(self.current_device)
-            self.current_device = self.devices[(index + 1) % len(self.devices)]
-
-        self.set_status("device changed")
-        self.config["device"] = self.current_device
-        save_config(self.config)
-        self.log_info(f"Selected device: {self.current_device}")
-
-    def action_output_bigger(self) -> None:
-        self.output_height += 3
-        self.query_one("#output", RichLog).styles.height = self.output_height
-        self.config["output_height"] = self.output_height
-        save_config(self.config)
-        self.set_status(f"output height {self.output_height}")
-
-    def action_output_smaller(self) -> None:
-        self.output_height = max(6, self.output_height - 3)
-        self.query_one("#output", RichLog).styles.height = self.output_height
-        self.config["output_height"] = self.output_height
-        save_config(self.config)
-        self.set_status(f"output height {self.output_height}")
-
-    def action_quit(self) -> None:
-        process = self.current_process
-        if process and process.returncode is None:
-            process.terminate()
-        self.exit()
-
-    @on(Input.Submitted, "#custom-input")
-    def on_custom_submitted(self, event: Input.Submitted) -> None:
-        text = event.value.strip()
-        if text:
-            if self.running_task and not self.running_task.done():
-                self.log_error("A command is already running. Press x to stop it first.")
-                return
-            self.running_task = asyncio.create_task(
-                self.run_device_command(CommandSpec("Custom", "custom", "User-entered command.", text))
-            )
-
-    @on(DataTable.RowSelected)
-    def on_row_selected(self, event: DataTable.RowSelected) -> None:
-        table_id = event.data_table.id or ""
-        category = table_id.removeprefix("table-").title()
-        if category == "Px":
-            category = "PX"
-        label = str(event.row_key.value)
-        self.selected_command = next(
-            (command for command in COMMANDS if command.category == category and command.label == label),
-            None,
-        )
-        self.action_run_selected()
-
-    @on(DataTable.RowHighlighted)
-    def on_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
-        table_id = event.data_table.id or ""
-        category = table_id.removeprefix("table-").title()
-        if category == "Px":
-            category = "PX"
-        label = str(event.row_key.value)
-        self.selected_command = next(
-            (command for command in COMMANDS if command.category == category and command.label == label),
-            None,
-        )
+def run(args: list[str]) -> str:
+    return subprocess.run(args, text=True, capture_output=True, check=False).stdout
 
 
 def running_containers() -> list[str]:
+    output = run(["docker", "ps", "--format", "{{.Names}}"])
+    return [line for line in output.splitlines() if line]
+
+
+def choose_container(config: dict[str, str], requested: str | None) -> str:
+    available = running_containers()
+    wanted = requested or config_value(config, "container", "DCMD_CONTAINER")
+
+    if wanted and wanted in available:
+        return wanted
+
+    if wanted and not available:
+        raise SystemExit(f"container is not running: {wanted}")
+
+    if not available:
+        raise SystemExit("no running Docker containers found")
+
+    if wanted:
+        raise SystemExit(f"container is not running: {wanted}")
+
+    return available[0]
+
+
+def installed_devices(container: str, install_root: str) -> list[str]:
+    command = f"find {install_root} -mindepth 1 -maxdepth 1 -type d -printf '%f\\n' | sort"
     result = subprocess.run(
-        ["docker", "ps", "--format", "{{.Names}}"],
+        ["docker", "exec", container, "bash", "-lc", command],
         text=True,
         capture_output=True,
+        check=False,
     )
+
     if result.returncode != 0:
-        message = result.stderr.strip() or result.stdout.strip() or "docker ps failed"
-        raise SystemExit(message)
-    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        raise SystemExit(result.stderr.strip() or result.stdout.strip())
+
+    return [line for line in result.stdout.splitlines() if line]
 
 
-def choose_container() -> str:
-    containers = running_containers()
-    if DEFAULT_CONTAINER in containers:
-        return DEFAULT_CONTAINER
+def choose_device(config: dict[str, str], container: str, install_root: str, requested: str | None) -> str:
+    found = installed_devices(container, install_root)
+    if not found:
+        raise SystemExit(f"no devices found under {install_root}")
 
-    if not containers:
-        raise SystemExit(f"No running Docker containers found. Expected default: {DEFAULT_CONTAINER}")
+    candidates = [requested, config.get("device"), found[0]]
+    for candidate in candidates:
+        if candidate in found:
+            config["device"] = candidate
+            save_config(config)
+            return str(candidate)
 
-    if not sys.stdin.isatty():
-        raise SystemExit(
-            f"Default container '{DEFAULT_CONTAINER}' is not running. "
-            f"Set DEV_CONTAINER to one of: {', '.join(containers)}"
+    return found[0]
+
+
+def command_by_name(name: str) -> Command:
+    for command in COMMANDS:
+        if command.name == name:
+            return command
+
+    raise SystemExit(f"unknown command: {name}")
+
+
+def run_device_command(container: str, install_root: str, profile_relpath: str, device: str, body: str) -> int:
+    profile = f"{install_root}/{device}/{profile_relpath}"
+    inner = f"source {profile}; {body}"
+    tty = "-it" if sys.stdin.isatty() else "-i"
+
+    return subprocess.call(["docker", "exec", tty, container, "bash", "-lc", inner])
+
+
+def interactive(container: str, install_root: str, profile_relpath: str, device: str) -> int:
+    names = [command.name for command in COMMANDS]
+    picker = shutil.which("fzf")
+
+    if picker:
+        result = subprocess.run(
+            [picker, "--prompt", f"{container}/{device}> "],
+            input="\n".join(names),
+            text=True,
+            capture_output=True,
+            check=False,
         )
+        selected = result.stdout.strip()
+    else:
+        print("\n".join(names))
+        selected = input("> ").strip()
 
-    print(f"Default container '{DEFAULT_CONTAINER}' is not running.")
-    print("Select Docker container:")
-    for index, name in enumerate(containers, start=1):
-        print(f"  {index}. {name}")
+    if not selected:
+        return 0
 
-    while True:
-        value = input("> ").strip()
-        if value.isdigit() and 1 <= int(value) <= len(containers):
-            return containers[int(value) - 1]
-        if value in containers:
-            return value
-        print("Invalid selection.")
-
-
-def has_terminal() -> bool:
-    return sys.stdin.isatty() and sys.stdout.isatty()
-
-
-def terminal_command(script_path: str) -> list[str] | None:
-    candidates = (
-        ("kitty", "--title", "dcmd", script_path),
-        ("ghostty", "--title=dcmd", "-e", script_path),
-        ("alacritty", "--title", "dcmd", "-e", script_path),
-        ("foot", "-T", "dcmd", script_path),
-        ("wezterm", "start", "--", script_path),
-        ("konsole", "--new-tab", "-p", "tabtitle=dcmd", "-e", script_path),
-        ("gnome-terminal", "--title=dcmd", "--", script_path),
-        ("xfce4-terminal", "--title=dcmd", "--command", script_path),
-        ("xterm", "-T", "dcmd", "-e", script_path),
+    return run_device_command(
+        container,
+        install_root,
+        profile_relpath,
+        device,
+        command_by_name(selected).body,
     )
-    for command in candidates:
-        if shutil.which(command[0]):
-            return list(command)
-    return None
 
 
-def relaunch_in_terminal_if_needed() -> None:
-    if has_terminal() or os.environ.get(TERMINAL_ENV):
-        return
-
-    script_path = os.path.abspath(__file__)
-    command = terminal_command(script_path)
-    if command is None:
-        raise SystemExit(
-            "No terminal attached and no supported terminal emulator found. "
-            "Install kitty, ghostty, alacritty, foot, wezterm, konsole, gnome-terminal, xfce4-terminal, or xterm."
-        )
-
-    os.environ[TERMINAL_ENV] = "1"
-    os.execvp(command[0], command)
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("command", nargs="?", help="command name or raw command with --raw")
+    parser.add_argument("--container")
+    parser.add_argument("--device")
+    parser.add_argument("--raw", action="store_true")
+    parser.add_argument("--list", action="store_true")
+    return parser.parse_args()
 
 
-def main() -> None:
-    relaunch_in_terminal_if_needed()
-    DeviceControlApp(choose_container()).run()
+def main() -> int:
+    args = parse_args()
+    config = load_config()
+
+    if args.list:
+        print("\n".join(command.name for command in COMMANDS))
+        return 0
+
+    install_root = require_value(config, "install_root", "DCMD_INSTALL_ROOT")
+    profile_relpath = require_value(config, "profile_relpath", "DCMD_PROFILE_RELPATH")
+    container = choose_container(config, args.container)
+    device = choose_device(config, container, install_root, args.device)
+
+    if not args.command:
+        return interactive(container, install_root, profile_relpath, device)
+
+    body = args.command if args.raw else command_by_name(args.command).body
+    return run_device_command(container, install_root, profile_relpath, device, body)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
