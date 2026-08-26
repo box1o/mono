@@ -60,3 +60,8 @@ fi
 # bash aliases
 alias g='nvim ~/.bashrc'
 alias s='source ~/.bashrc'
+
+# Start (or reattach to) the main terminal workspace automatically.
+if [[ $- == *i* && -z "${TMUX:-}" && -t 0 && -t 1 ]] && command -v tmux >/dev/null 2>&1; then
+  exec tmux new-session -A -s main
+fi
