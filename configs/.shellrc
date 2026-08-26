@@ -210,6 +210,40 @@ tk() {
     xargs -r tmux kill-session -t
 }
 
+tmux_friendly_session_name() {
+  local names name
+
+  names='apple
+banana
+cherry
+comet
+civic
+daisy
+falcon
+fig
+glider
+kiwi
+lotus
+maple
+meteor
+nova
+olive
+peach
+rocket
+safari
+violet
+zest'
+
+  while IFS= read -r name; do
+    if ! tmux has-session -t "=$name" 2>/dev/null; then
+      printf '%s\n' "$name"
+      return 0
+    fi
+  done < <(printf '%s\n' "$names" | shuf)
+
+  printf 'terminal-%s\n' "$$"
+}
+
 # mgw
 sdd() {
   cd "$HOME/work/fmc/mgw/ugw/repo" || return
